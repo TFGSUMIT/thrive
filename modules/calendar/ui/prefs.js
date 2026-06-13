@@ -4,8 +4,9 @@
 export const WEEKSTART_KEY = 'thrive:calendar:weekStart'
 export const PREFS_EVENT   = 'thrive:calendar-prefs-changed'
 
+// Default Sunday-first (US convention). Only an explicit 'mon' choice flips it.
 export const getWeekStart = () => {
-  try { return localStorage.getItem(WEEKSTART_KEY) === 'sun' ? 'sun' : 'mon' } catch { return 'mon' }
+  try { return localStorage.getItem(WEEKSTART_KEY) === 'mon' ? 'mon' : 'sun' } catch { return 'sun' }
 }
 export const setWeekStart = (v) => {
   const val = v === 'sun' ? 'sun' : 'mon'

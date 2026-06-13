@@ -6,5 +6,5 @@ export default {
   id: 'calendar',
   path: '/calendar',
   Page: CalendarPage,
-  settings: { title: 'Calendar', defaultOpen: false, Panel: CalendarPanel },
+  settings: { title: 'Calendar', defaultOpen: true, Panel: CalendarPanel },
 }
