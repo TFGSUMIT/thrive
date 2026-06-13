@@ -13,10 +13,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '@core/api'
 import { useToast } from '@core/context/ToastContext'
 import { useConfirm } from '@core/context/ConfirmModal'
+import { getWeekStart, PREFS_EVENT } from './prefs'
 
 const ACCENT = '#f97316'   // module color
 
-const DOW    = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const DOW_MON = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const DOW_SUN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const dowLabels = (ws) => (ws === 'sun' ? DOW_SUN : DOW_MON)
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
 const pad  = (n) => String(n).padStart(2, '0')
@@ -37,10 +40,12 @@ const BUDGET_CAL = {
   'budget-transfer': { name: 'Scheduled transfer', color: '#3b82f6' },
 }
 
-// 42-cell Monday-first month grid
-const monthGrid = (year, month) => {
+// 42-cell month grid, week starting Monday ('mon', default) or Sunday ('sun')
+const monthGrid = (year, month, weekStart) => {
   const first = new Date(year, month, 1)
-  const start = new Date(year, month, 1 - ((first.getDay() + 6) % 7))
+  // how far the 1st sits from the leftmost (start-of-week) column
+  const offset = weekStart === 'sun' ? first.getDay() : (first.getDay() + 6) % 7
+  const start = new Date(year, month, 1 - offset)
   return Array.from({ length: 42 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d })
 }
 
@@ -74,6 +79,14 @@ export default function CalendarPage() {
 
   const today = new Date()
   const [cursor,  setCursor]  = useState({ y: today.getFullYear(), m: today.getMonth() })
+  const [weekStart, setWeekStartState] = useState(getWeekStart)   // 'mon' | 'sun' (per-device pref)
+  useEffect(() => {
+    const sync = () => setWeekStartState(getWeekStart())
+    window.addEventListener(PREFS_EVENT, sync)
+    window.addEventListener('storage', sync)   // other tabs
+    return () => { window.removeEventListener(PREFS_EVENT, sync); window.removeEventListener('storage', sync) }
+  }, [])
+  const DOW = dowLabels(weekStart)
   const [cals,    setCals]    = useState([])
   const [events,  setEvents]  = useState([])
   const [budgetEvents, setBudgetEvents] = useState([])
@@ -88,7 +101,7 @@ export default function CalendarPage() {
     if (params.get('error'))     { showToast(`OAuth failed: ${params.get('error')}`, 'error');            setParams({}, { replace: true }) }
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const grid = monthGrid(cursor.y, cursor.m)
+  const grid = monthGrid(cursor.y, cursor.m, weekStart)
   const gridStart = grid[0], gridEnd = new Date(grid[41]); gridEnd.setDate(gridEnd.getDate() + 1)
 
   const loadCals = useCallback(async () => {

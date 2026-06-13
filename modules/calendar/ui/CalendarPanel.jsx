@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '@core/api'
 import { useToast } from '@core/context/ToastContext'
 import { useConfirm } from '@core/context/ConfirmModal'
+import { getWeekStart, setWeekStart as saveWeekStart, PREFS_EVENT } from './prefs'
 
 const ACCENT = '#f97316'   // module color
 
@@ -35,6 +36,13 @@ export default function CalendarPanel() {
   const [inputs,   setInputs]   = useState({})    // cfg key → typed value
   const [newCal,   setNewCal]   = useState('')
   const [busy,     setBusy]     = useState(false)
+  const [weekStart, setWS]      = useState(getWeekStart)   // per-device display pref
+  useEffect(() => {
+    const sync = () => setWS(getWeekStart())
+    window.addEventListener(PREFS_EVENT, sync)
+    return () => window.removeEventListener(PREFS_EVENT, sync)
+  }, [])
+  const changeWeekStart = (v) => { saveWeekStart(v); setWS(v) }
 
   const redirectUri = `${window.location.origin}/api/calendar/oauth/callback`
 
@@ -96,6 +104,21 @@ export default function CalendarPanel() {
 
   return (
     <div style={{ padding: 16 }}>
+      {/* ── display (per-device) ── */}
+      <label style={lbl}>Week starts on</label>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--border-color,#2a2a2a)' }}>
+        {[['mon', 'Monday'], ['sun', 'Sunday']].map(([v, label]) => {
+          const on = weekStart === v
+          return (
+            <button key={v} onClick={() => changeWeekStart(v)}
+              style={{ ...btnS, flex: 1, borderColor: on ? ACCENT : 'var(--border-color,#333)',
+                color: on ? ACCENT : 'var(--text-secondary,#aaa)', background: on ? `${ACCENT}22` : 'none' }}>
+              {label}
+            </button>
+          )
+        })}
+      </div>
+
       {/* ── provider OAuth apps ── */}
       <label style={lbl}>Provider apps</label>
       <div style={{ fontSize: 10, color: 'var(--text-tertiary,#666)', marginBottom: 10 }}>
