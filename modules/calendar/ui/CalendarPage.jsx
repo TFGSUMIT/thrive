@@ -87,6 +87,20 @@ export default function CalendarPage() {
     return () => { window.removeEventListener(PREFS_EVENT, sync); window.removeEventListener('storage', sync) }
   }, [])
   const DOW = dowLabels(weekStart)
+
+  // Wall-display: the calendar IS the full screen — hide thrive's top nav and
+  // fill 100vh. Navigation moves into a pull-down menu in the header (below).
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('thrive:immersive', { detail: true }))
+    return () => window.dispatchEvent(new CustomEvent('thrive:immersive', { detail: false }))  // restore nav on leave
+  }, [])
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [navModules, setNavModules] = useState([])
+  useEffect(() => {
+    api.get('/modules')
+      .then(ms => setNavModules(ms.filter(m => m.installed && m.enabled && m.nav_path && m.id !== 'calendar')))
+      .catch(() => {})
+  }, [])
   const [cals,    setCals]    = useState([])
   const [events,  setEvents]  = useState([])
   const [budgetEvents, setBudgetEvents] = useState([])
@@ -226,8 +240,8 @@ export default function CalendarPage() {
   const readonly = modal && modal !== 'new' && modal.readonly
 
   return (
-    // fill the whole content area (below the 48px top nav) — a wall/kiosk calendar
-    <div style={{ height: 'calc(100vh - 48px)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10, boxSizing: 'border-box', overflow: 'hidden' }}>
+    // the calendar owns the whole screen (top nav hidden via immersive above)
+    <div style={{ height: '100vh', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10, boxSizing: 'border-box', overflow: 'hidden' }}>
 
       {/* ── header ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
@@ -241,6 +255,30 @@ export default function CalendarPage() {
           <button style={btnS} onClick={() => setCursor(c => c.m === 11 ? { y: c.y + 1, m: 0 } : { ...c, m: c.m + 1 })}>›</button>
           <button style={btnS} onClick={() => setCursor({ y: today.getFullYear(), m: today.getMonth() })}>Today</button>
           <button style={btnP} onClick={() => openNew()} disabled={!writable.length}>+ Event</button>
+
+          {/* ── pull-down nav menu (replaces the hidden top nav) ── */}
+          <div style={{ position: 'relative' }}>
+            <button style={menuOpen ? btnP : btnS} onClick={() => setMenuOpen(o => !o)}>Menu</button>
+            {menuOpen && (
+              <>
+                <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 150 }} />
+                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 151, minWidth: 190,
+                  background: 'var(--bg-secondary,#181818)', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 8,
+                  overflow: 'hidden', boxShadow: '0 8px 28px var(--shadow-color,rgba(0,0,0,0.45))' }}>
+                  {[{ id: 'home', icon: '🏠', name: 'Home', nav_path: '/' },
+                    ...navModules,
+                    { id: 'settings', icon: '⚙️', name: 'Settings', nav_path: '/settings' }].map((m, i) => (
+                    <button key={m.id} onClick={() => { setMenuOpen(false); navigate(m.nav_path) }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '11px 16px',
+                        background: 'none', border: 'none', borderTop: i ? '1px solid var(--border-color,#2a2a2a)' : 'none',
+                        color: 'var(--text-primary,#e8e6e0)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, textAlign: 'left' }}>
+                      <span style={{ fontSize: 17 }}>{m.icon || '📦'}</span>{m.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
