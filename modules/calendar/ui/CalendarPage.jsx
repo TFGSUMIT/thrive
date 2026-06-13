@@ -91,8 +91,12 @@ export default function CalendarPage() {
   // Wall-display: the calendar IS the full screen — hide thrive's top nav and
   // fill 100vh. Navigation moves into a pull-down menu in the header (below).
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent('thrive:immersive', { detail: true }))
-    return () => window.dispatchEvent(new CustomEvent('thrive:immersive', { detail: false }))  // restore nav on leave
+    // defer to a later task so the shell's immersive listener is attached even
+    // when the calendar is the very first page rendered (front page = calendar)
+    const fire = () => window.dispatchEvent(new CustomEvent('thrive:immersive', { detail: true }))
+    fire()
+    const id = setTimeout(fire, 0)
+    return () => { clearTimeout(id); window.dispatchEvent(new CustomEvent('thrive:immersive', { detail: false })) }  // restore nav on leave
   }, [])
   const [menuOpen, setMenuOpen] = useState(false)
   const [navModules, setNavModules] = useState([])
