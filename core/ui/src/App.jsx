@@ -12,6 +12,7 @@ import { api } from './api'
 import LoginPage   from './components/LoginPage'
 import LandingPage from './pages/LandingPage'
 import SettingsPage from './pages/SettingsPage'
+import FpsMeter    from './components/FpsMeter'
 import { MODULES } from './moduleRegistry'
 
 // Module UIs are discovered entirely at build time (see moduleRegistry.js).
@@ -228,6 +229,9 @@ function Shell() {
     <>
       <AmbientBackground />
       {!immersive && <TopNav />}
+      {/* always-on FPS badge (Settings → UI) — shown even in immersive so it can
+          read the blackhole/ambient frame-rate over a full-screen renderer */}
+      <FpsMeter />
       <main style={{ marginTop: immersive ? 0 : 48, minHeight: immersive ? '100vh' : 'calc(100vh - 48px)' }}>
         <Routes>
           <Route path="/"         element={<RootRoute />} />
