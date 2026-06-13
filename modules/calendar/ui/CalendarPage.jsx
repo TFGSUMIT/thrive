@@ -244,20 +244,22 @@ export default function CalendarPage() {
   const readonly = modal && modal !== 'new' && modal.readonly
 
   return (
-    // the calendar owns the whole screen (top nav hidden via immersive above)
-    <div style={{ height: '100vh', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10, boxSizing: 'border-box', overflow: 'hidden' }}>
+    // wall display: the month grid fills the entire screen, edge to edge.
+    // Just a slim top bar (month + nav + menu); no sidebar, no chrome.
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', overflow: 'hidden' }}>
 
-      {/* ── header ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <h1 style={{ fontSize: 14, fontWeight: 500, letterSpacing: '0.15em', textTransform: 'uppercase', margin: 0 }}>📅 Calendar</h1>
-          <p style={{ fontSize: 12, color: 'var(--text-tertiary,#888)', marginTop: 4 }}>Household schedule</p>
+      {/* ── slim top bar ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        padding: '8px 16px', borderBottom: '1px solid var(--border-color,#2a2a2a)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+          <span style={{ fontSize: 22, fontWeight: 600, letterSpacing: '0.04em' }}>{MONTHS[cursor.m]}</span>
+          <span style={{ fontSize: 18, color: 'var(--text-tertiary,#888)', fontFamily: 'monospace' }}>{cursor.y}</span>
+          {loading && <span style={{ fontSize: 10, color: 'var(--text-tertiary,#666)' }}>syncing…</span>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button style={btnS} onClick={() => setCursor(c => c.m ? { ...c, m: c.m - 1 } : { y: c.y - 1, m: 11 })}>‹</button>
-          <span style={{ fontSize: 13, minWidth: 150, textAlign: 'center', letterSpacing: '0.06em' }}>{MONTHS[cursor.m]} {cursor.y}</span>
-          <button style={btnS} onClick={() => setCursor(c => c.m === 11 ? { y: c.y + 1, m: 0 } : { ...c, m: c.m + 1 })}>›</button>
           <button style={btnS} onClick={() => setCursor({ y: today.getFullYear(), m: today.getMonth() })}>Today</button>
+          <button style={btnS} onClick={() => setCursor(c => c.m === 11 ? { y: c.y + 1, m: 0 } : { ...c, m: c.m + 1 })}>›</button>
           <button style={btnP} onClick={() => openNew()} disabled={!writable.length}>+ Event</button>
 
           {/* ── pull-down nav menu (replaces the hidden top nav) ── */}
@@ -266,9 +268,23 @@ export default function CalendarPage() {
             {menuOpen && (
               <>
                 <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 150 }} />
-                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 151, minWidth: 190,
+                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 151, minWidth: 200,
                   background: 'var(--bg-secondary,#181818)', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 8,
                   overflow: 'hidden', boxShadow: '0 8px 28px var(--shadow-color,rgba(0,0,0,0.45))' }}>
+                  {/* calendar visibility toggles live here now (kept off the wall) */}
+                  {cals.length > 0 && (
+                    <div style={{ padding: '8px 16px 4px', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-tertiary,#666)' }}>Calendars</div>
+                  )}
+                  {cals.map(c => (
+                    <button key={`cal-${c.id}`} onClick={() => toggleCal(c)} title={c.account_label ? `${c.account_label} (${c.kind})` : 'thrive calendar'}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '7px 16px',
+                        background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, textAlign: 'left',
+                        color: c.visible ? 'var(--text-primary,#e8e6e0)' : 'var(--text-tertiary,#666)' }}>
+                      <span style={{ width: 9, height: 9, borderRadius: '50%', flexShrink: 0, background: c.visible ? c.color : 'var(--border-color,#444)' }} />
+                      {c.name}{!c.writable && ' 🔒'}
+                    </button>
+                  ))}
+                  <div style={{ borderTop: '1px solid var(--border-color,#2a2a2a)' }} />
                   {[{ id: 'home', icon: '🏠', name: 'Home', nav_path: '/' },
                     ...navModules,
                     { id: 'settings', icon: '⚙️', name: 'Settings', nav_path: '/settings' }].map((m, i) => (
@@ -286,96 +302,51 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* ── calendar visibility chips ── */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-        {cals.map(c => (
-          <button key={c.id} onClick={() => toggleCal(c)} title={c.account_label ? `${c.account_label} (${c.kind})` : 'thrive calendar'}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, cursor: 'pointer',
-              fontFamily: 'inherit', fontSize: 11, color: c.visible ? 'inherit' : 'var(--text-tertiary,#666)',
-              background: c.visible ? 'var(--bg-tertiary,#222)' : 'none', border: '1px solid var(--border-color,#2a2a2a)' }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: c.visible ? c.color : 'var(--border-color,#444)' }} />
-            {c.name}{!c.writable && ' 🔒'}
-          </button>
-        ))}
-        <button style={{ ...btnS, padding: '4px 10px', fontSize: 9 }} onClick={() => navigate('/settings')}>manage…</button>
-        {loading && <span style={{ fontSize: 10, color: 'var(--text-tertiary,#666)' }}>syncing…</span>}
-      </div>
-
       {errors.length > 0 && (
-        <div style={{ fontSize: 11, color: '#f59e0b', padding: '8px 12px', background: 'rgba(245,158,11,0.08)', borderRadius: 6 }}>
+        <div style={{ fontSize: 11, color: '#f59e0b', padding: '6px 16px', background: 'rgba(245,158,11,0.08)', flexShrink: 0 }}>
           {errors.map(e => <div key={e.id}>{e.title}</div>)}
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 14, alignItems: 'stretch', flex: 1, minHeight: 0 }}>
-        {/* ── month grid ── (fills remaining height; rows stretch to fit) */}
-        <div style={{ ...card, flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-          {/* minmax(0,1fr): a bare 1fr won't shrink below the widest nowrap chip,
-              which made columns unequal and pushed days out from under their
-              weekday headers */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', borderBottom: '1px solid var(--border-color,#2a2a2a)', flexShrink: 0 }}>
-            {DOW.map(d => <div key={d} style={{ padding: '8px 0', textAlign: 'center', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-tertiary,#666)' }}>{d}</div>)}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gridTemplateRows: 'repeat(6, minmax(0, 1fr))', flex: 1, minHeight: 0 }}>
-            {grid.map((d, i) => {
-              const k = dkey(d)
-              const inMonth = d.getMonth() === cursor.m
-              const isToday = k === todayKey
-              const dayEvents = byDay[k] || []
-              return (
-                <div key={i} onClick={() => writable.length && openNew(k)}
-                  style={{ minHeight: 0, minWidth: 0, overflow: 'hidden', padding: 4, cursor: writable.length ? 'pointer' : 'default',
-                    borderTop: i >= 7 ? '1px solid var(--border-color,#2a2a2a)' : 'none',
-                    borderLeft: i % 7 ? '1px solid var(--border-color,#2a2a2a)' : 'none',
-                    background: isToday ? 'rgba(249,115,22,0.06)' : 'none', opacity: inMonth ? 1 : 0.4 }}>
-                  <div style={{ fontSize: 10, fontFamily: 'monospace', padding: '1px 3px', marginBottom: 3,
-                    color: isToday ? ACCENT : 'var(--text-tertiary,#888)', fontWeight: isToday ? 700 : 400 }}>
-                    {d.getDate()}
-                  </div>
-                  {dayEvents.slice(0, 5).map(ev => (
-                    <div key={`${ev.calendar_id}:${ev.id}:${k}`}
-                      onClick={e => { e.stopPropagation(); ev.source === 'budget' ? navigate('/budget') : openEdit(ev) }}
-                      title={`${ev.title}${ev.all_day ? '' : ` · ${fmtTime(ev.start)}`}`}
-                      style={{ fontSize: 10, lineHeight: '15px', padding: '0 4px', marginBottom: 2, borderRadius: 3,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer',
-                        background: `${calById[ev.calendar_id]?.color || ACCENT}33`,
-                        borderLeft: `2px solid ${calById[ev.calendar_id]?.color || ACCENT}` }}>
-                      {!ev.all_day && <span style={{ color: 'var(--text-tertiary,#999)', fontFamily: 'monospace' }}>{fmtTime(ev.start)} </span>}
-                      {ev.title}
-                    </div>
-                  ))}
-                  {dayEvents.length > 5 && <div style={{ fontSize: 9, color: 'var(--text-tertiary,#666)', paddingLeft: 4 }}>+{dayEvents.length - 5} more</div>}
-                </div>
-              )
-            })}
-          </div>
+      {/* ── month grid: fills all remaining space, edge to edge ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        {/* minmax(0,1fr): a bare 1fr won't shrink below the widest nowrap chip,
+            which made columns unequal and pushed days out from under their headers */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', borderBottom: '1px solid var(--border-color,#2a2a2a)', flexShrink: 0 }}>
+          {DOW.map(d => <div key={d} style={{ padding: '8px 0', textAlign: 'center', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--text-tertiary,#666)' }}>{d}</div>)}
         </div>
-
-        {/* ── agenda ── (fixed-width sidebar, scrolls to fill height) */}
-        <div style={{ ...card, flex: '0 0 300px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <div style={{ ...head, flexShrink: 0 }}>Next two weeks</div>
-          <div style={{ padding: '6px 0', flex: 1, overflowY: 'auto', minHeight: 0 }}>
-            {agendaDays.length === 0 ? (
-              <div style={{ padding: 16, fontSize: 12, color: 'var(--text-tertiary,#888)' }}>Nothing coming up.</div>
-            ) : agendaDays.map(d => (
-              <div key={d} style={{ padding: '6px 16px' }}>
-                <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'monospace',
-                  color: d === todayKey ? ACCENT : 'var(--text-tertiary,#666)', marginBottom: 4 }}>
-                  {d === todayKey ? 'Today' : new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gridTemplateRows: 'repeat(6, minmax(0, 1fr))', flex: 1, minHeight: 0 }}>
+          {grid.map((d, i) => {
+            const k = dkey(d)
+            const inMonth = d.getMonth() === cursor.m
+            const isToday = k === todayKey
+            const dayEvents = byDay[k] || []
+            return (
+              <div key={i} onClick={() => writable.length && openNew(k)}
+                style={{ minHeight: 0, minWidth: 0, overflow: 'hidden', padding: 5, cursor: writable.length ? 'pointer' : 'default',
+                  borderTop: i >= 7 ? '1px solid var(--border-color,#2a2a2a)' : 'none',
+                  borderLeft: i % 7 ? '1px solid var(--border-color,#2a2a2a)' : 'none',
+                  background: isToday ? 'rgba(249,115,22,0.08)' : 'none', opacity: inMonth ? 1 : 0.35 }}>
+                <div style={{ fontSize: 13, fontFamily: 'monospace', padding: '1px 4px', marginBottom: 3,
+                  color: isToday ? ACCENT : 'var(--text-tertiary,#888)', fontWeight: isToday ? 700 : 400 }}>
+                  {d.getDate()}
                 </div>
-                {agenda[d].map(ev => (
-                  <div key={`${ev.calendar_id}:${ev.id}`} onClick={() => ev.source === 'budget' ? navigate('/budget') : openEdit(ev)}
-                    style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '3px 0', cursor: 'pointer' }}>
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, alignSelf: 'center', background: calById[ev.calendar_id]?.color || ACCENT }} />
-                    <span style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--text-tertiary,#888)', width: 38, flexShrink: 0 }}>
-                      {ev.all_day ? 'all day' : fmtTime(ev.start)}
-                    </span>
-                    <span style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.title}</span>
+                {dayEvents.slice(0, 6).map(ev => (
+                  <div key={`${ev.calendar_id}:${ev.id}:${k}`}
+                    onClick={e => { e.stopPropagation(); ev.source === 'budget' ? navigate('/budget') : openEdit(ev) }}
+                    title={`${ev.title}${ev.all_day ? '' : ` · ${fmtTime(ev.start)}`}`}
+                    style={{ fontSize: 11, lineHeight: '17px', padding: '0 5px', marginBottom: 2, borderRadius: 3,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer',
+                      background: `${calById[ev.calendar_id]?.color || ACCENT}33`,
+                      borderLeft: `2px solid ${calById[ev.calendar_id]?.color || ACCENT}` }}>
+                    {!ev.all_day && <span style={{ color: 'var(--text-tertiary,#999)', fontFamily: 'monospace' }}>{fmtTime(ev.start)} </span>}
+                    {ev.title}
                   </div>
                 ))}
+                {dayEvents.length > 6 && <div style={{ fontSize: 10, color: 'var(--text-tertiary,#666)', paddingLeft: 5 }}>+{dayEvents.length - 6} more</div>}
               </div>
-            ))}
-          </div>
+            )
+          })}
         </div>
       </div>
 
