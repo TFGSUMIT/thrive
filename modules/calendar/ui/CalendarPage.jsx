@@ -213,7 +213,8 @@ export default function CalendarPage() {
   const readonly = modal && modal !== 'new' && modal.readonly
 
   return (
-    <div style={{ padding: '1.5rem 1.5rem 3rem', maxWidth: 1100, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    // fill the whole content area (below the 48px top nav) — a wall/kiosk calendar
+    <div style={{ height: 'calc(100vh - 48px)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10, boxSizing: 'border-box', overflow: 'hidden' }}>
 
       {/* ── header ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
@@ -251,13 +252,16 @@ export default function CalendarPage() {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        {/* ── month grid ── */}
-        <div style={{ ...card, flex: '1 1 640px', minWidth: 0 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border-color,#2a2a2a)' }}>
+      <div style={{ display: 'flex', gap: 14, alignItems: 'stretch', flex: 1, minHeight: 0 }}>
+        {/* ── month grid ── (fills remaining height; rows stretch to fit) */}
+        <div style={{ ...card, flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+          {/* minmax(0,1fr): a bare 1fr won't shrink below the widest nowrap chip,
+              which made columns unequal and pushed days out from under their
+              weekday headers */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', borderBottom: '1px solid var(--border-color,#2a2a2a)', flexShrink: 0 }}>
             {DOW.map(d => <div key={d} style={{ padding: '8px 0', textAlign: 'center', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-tertiary,#666)' }}>{d}</div>)}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gridTemplateRows: 'repeat(6, minmax(0, 1fr))', flex: 1, minHeight: 0 }}>
             {grid.map((d, i) => {
               const k = dkey(d)
               const inMonth = d.getMonth() === cursor.m
@@ -265,7 +269,7 @@ export default function CalendarPage() {
               const dayEvents = byDay[k] || []
               return (
                 <div key={i} onClick={() => writable.length && openNew(k)}
-                  style={{ minHeight: 86, padding: 4, cursor: writable.length ? 'pointer' : 'default',
+                  style={{ minHeight: 0, minWidth: 0, overflow: 'hidden', padding: 4, cursor: writable.length ? 'pointer' : 'default',
                     borderTop: i >= 7 ? '1px solid var(--border-color,#2a2a2a)' : 'none',
                     borderLeft: i % 7 ? '1px solid var(--border-color,#2a2a2a)' : 'none',
                     background: isToday ? 'rgba(249,115,22,0.06)' : 'none', opacity: inMonth ? 1 : 0.4 }}>
@@ -273,7 +277,7 @@ export default function CalendarPage() {
                     color: isToday ? ACCENT : 'var(--text-tertiary,#888)', fontWeight: isToday ? 700 : 400 }}>
                     {d.getDate()}
                   </div>
-                  {dayEvents.slice(0, 3).map(ev => (
+                  {dayEvents.slice(0, 5).map(ev => (
                     <div key={`${ev.calendar_id}:${ev.id}:${k}`}
                       onClick={e => { e.stopPropagation(); ev.source === 'budget' ? navigate('/budget') : openEdit(ev) }}
                       title={`${ev.title}${ev.all_day ? '' : ` · ${fmtTime(ev.start)}`}`}
@@ -285,17 +289,17 @@ export default function CalendarPage() {
                       {ev.title}
                     </div>
                   ))}
-                  {dayEvents.length > 3 && <div style={{ fontSize: 9, color: 'var(--text-tertiary,#666)', paddingLeft: 4 }}>+{dayEvents.length - 3} more</div>}
+                  {dayEvents.length > 5 && <div style={{ fontSize: 9, color: 'var(--text-tertiary,#666)', paddingLeft: 4 }}>+{dayEvents.length - 5} more</div>}
                 </div>
               )
             })}
           </div>
         </div>
 
-        {/* ── agenda ── */}
-        <div style={{ ...card, flex: '1 1 240px', maxWidth: 340 }}>
-          <div style={head}>Next two weeks</div>
-          <div style={{ padding: '6px 0', maxHeight: 560, overflowY: 'auto' }}>
+        {/* ── agenda ── (fixed-width sidebar, scrolls to fill height) */}
+        <div style={{ ...card, flex: '0 0 300px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <div style={{ ...head, flexShrink: 0 }}>Next two weeks</div>
+          <div style={{ padding: '6px 0', flex: 1, overflowY: 'auto', minHeight: 0 }}>
             {agendaDays.length === 0 ? (
               <div style={{ padding: 16, fontSize: 12, color: 'var(--text-tertiary,#888)' }}>Nothing coming up.</div>
             ) : agendaDays.map(d => (
