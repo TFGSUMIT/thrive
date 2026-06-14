@@ -78,7 +78,7 @@ const FEATURE_TIPS = {
   glow:    'Bloom / glow post-effect around bright areas.',
 }
 const QUALITY_TIP = 'Render detail vs. performance: lower uses fewer ray steps + fewer pixels + a capped frame rate (smoother on weak hardware).'
-const QUALITIES = ['ultra', 'high', 'medium', 'low', 'potato']
+const QUALITIES = ['auto', 'ultra', 'high', 'medium', 'low', 'potato', 'min']
 
 const SIDEBAR_W = 260
 

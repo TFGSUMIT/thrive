@@ -180,7 +180,7 @@ function AmbientBackground() {
     <Comp
       params={cfg.params || {}}
       toggles={cfg.toggles || {}}
-      quality="low"            /* ambient/always-on -> keep it cheap */
+      quality="auto"           /* ambient/always-on -> self-tunes down on weak GPUs */
       opacity={0.6}
     />
   )

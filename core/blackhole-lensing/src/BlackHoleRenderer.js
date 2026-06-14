@@ -43,13 +43,26 @@ export const DEFAULT_PARAMS = {
 };
 
 // ---- quality presets: integration steps, render-res scale, fps cap ----------
+// resolutionScale is the dominant cost (it's a fragment-bound shader — cost is
+// ~quadratic in scale); steps is linear. 'min' is the floor for weak GPUs
+// (e.g. a Raspberry Pi's VideoCore): ~8% of full-res pixels.
 export const QUALITY_PRESETS = {
   ultra:  { steps: 320, resolutionScale: 1.0,  fpsCap: 60 },
   high:   { steps: 220, resolutionScale: 1.0,  fpsCap: 60 },
   medium: { steps: 150, resolutionScale: 0.75, fpsCap: 30 },
-  low:    { steps: 90,  resolutionScale: 0.6,  fpsCap: 20 },
-  potato: { steps: 55,  resolutionScale: 0.45, fpsCap: 15 },
+  low:    { steps: 110, resolutionScale: 0.5,  fpsCap: 30 },
+  potato: { steps: 80,  resolutionScale: 0.32, fpsCap: 30 },
+  // Cheap levels keep STEPS high (the accretion disk needs ray-marching to show)
+  // but slash RESOLUTION (cost ≈ scale²·steps) — so a weak GPU runs them FAST
+  // while the disk/lensing stays visible, just soft. A cheap draw that doesn't
+  // hog the main thread keeps the rest of the UI responsive too.
+  min:    { steps: 56,  resolutionScale: 0.2,  fpsCap: 30 },
 };
+
+// adaptive ladder, cheapest → richest. quality 'auto' starts near the top and
+// ratchets DOWN this list when it can't keep up — never up, so it settles on a
+// stable level instead of oscillating (no visible quality flicker).
+export const QUALITY_LADDER = ['min', 'potato', 'low', 'medium', 'high', 'ultra'];
 
 const UNIFORM_NAMES = [
   'uResolution', 'uTime', 'uRotation', 'uAspect', 'uCameraRect', 'uOffset',
@@ -67,7 +80,6 @@ export class BlackHoleRenderer {
   constructor(canvas, params = {}, options = {}) {
     this.canvas = canvas;
     this.params = { ...DEFAULT_PARAMS, ...params };
-    this.quality = { ...QUALITY_PRESETS[options.quality || 'high'] };
     this.toggles = { ...DEFAULT_TOGGLES, ...(options.toggles || {}) };
     this.respectReducedMotion = options.respectReducedMotion !== false;
 
@@ -78,6 +90,13 @@ export class BlackHoleRenderer {
     this._lastTick = 0;
     this._running = false;
     this._dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    // adaptive quality state (active only when quality is 'auto')
+    this._adaptive = false;
+    this._adaptLevel = 0;
+    this._frameSamples = [];
+    this._levelSetAt = 0;
+    this.setQuality(options.quality || 'high');
 
     this._reducedMQ = window.matchMedia
       ? window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -158,12 +177,52 @@ export class BlackHoleRenderer {
   // ---- public API ----------------------------------------------------------
   setParams(patch) { Object.assign(this.params, patch); if (!this._running) this._renderOnce(); }
 
-  /** quality: a preset name or a partial { steps, resolutionScale, fpsCap } */
+  /** quality: 'auto' (self-tuning), a preset name, or a partial { steps, resolutionScale, fpsCap } */
   setQuality(q) {
-    if (typeof q === 'string') this.quality = { ...QUALITY_PRESETS[q] || this.quality };
-    else Object.assign(this.quality, q);
+    if (q === 'auto') {
+      // start mid (not 'high' — that's catastrophic on a weak GPU and slows the
+      // cascade); _adapt() ratchets DOWN until smooth. Down-only → stable.
+      this._adaptive = true;
+      this._frameSamples = [];
+      this._adaptLevel = QUALITY_LADDER.indexOf('medium');
+      this._levelSetAt = (typeof performance !== 'undefined') ? performance.now() : 0;
+      this.quality = { ...QUALITY_PRESETS[QUALITY_LADDER[this._adaptLevel]] };
+    } else {
+      this._adaptive = false;
+      if (typeof q === 'string') this.quality = { ...QUALITY_PRESETS[q] || this.quality };
+      else Object.assign(this.quality, q);
+    }
     this.resize();
     if (!this._running) this._renderOnce();
+  }
+
+  // Adaptive quality: called per rendered frame with the achieved interval since
+  // the previous render. TIME-gated (not frame-count gated) so it cascades even
+  // at 2fps: it drops one rung at most once per second while the median frame
+  // rate sits under this level's cap. Median shrugs off a GC/resize hitch.
+  _adapt(intervalMs, now) {
+    if (intervalMs > 0 && intervalMs < 4000) {     // ignore startup/resume gaps
+      this._frameSamples.push(intervalMs);
+      if (this._frameSamples.length > 30) this._frameSamples.shift();
+    }
+    if (this._adaptLevel <= 0) return;             // already at the floor
+    if (now - this._levelSetAt < 1000) return;     // settle ≥1s before re-judging
+    if (this._frameSamples.length < 3) return;     // need a few samples first
+    const s = [...this._frameSamples].sort((a, b) => a - b);
+    const medFps = 1000 / s[s.length >> 1];
+    const cap = this.quality.fpsCap || 60;
+    if (medFps < cap * 0.7) {
+      this._adaptLevel -= 1;
+      this.quality = { ...QUALITY_PRESETS[QUALITY_LADDER[this._adaptLevel]] };
+      this.resize();                 // resolutionScale changed → resize the backing store
+      this._frameSamples = [];
+      this._levelSetAt = now;
+    }
+  }
+
+  /** current effective quality level name (useful for HUD/debug) */
+  get qualityLevel() {
+    return this._adaptive ? QUALITY_LADDER[this._adaptLevel] : (this.quality._name || 'custom');
   }
 
   /** enable/disable features — recompiles the shader so disabled ones cost nothing.
@@ -183,6 +242,7 @@ export class BlackHoleRenderer {
   get reducedMotion() { return this.respectReducedMotion && this._reducedMQ.matches; }
 
   resize() {
+    if (!this.gl) return;   // construction calls setQuality()→resize() before _initGL()
     const { canvas } = this;
     const cssW = canvas.clientWidth || canvas.width || 300;
     const cssH = canvas.clientHeight || canvas.height || 150;
@@ -231,6 +291,7 @@ export class BlackHoleRenderer {
 
     const minDelta = 1000 / (this.quality.fpsCap || 60);
     if (now - this._lastFrame < minDelta - 0.5) return; // framerate cap
+    const sinceLast = now - this._lastFrame;            // achieved inter-render interval
     const dt = Math.min((now - this._lastTick) / 1000, 0.1);
     this._lastTick = now;
     this._lastFrame = now;
@@ -238,6 +299,7 @@ export class BlackHoleRenderer {
     this._time += dt;
     if (!this.reducedMotion) this._rotation += this.params.rotationSpeed * dt;
     this._draw();
+    if (this._adaptive) this._adapt(sinceLast, now);
   }
 
   _renderOnce() {
