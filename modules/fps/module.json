@@ -5,6 +5,7 @@
   "description": "Frame-rate readout overlay — handy for a heavy ambient on weak hardware",
   "version": "0.1.0",
   "color": "#22c55e",
+  "nav_path": "/fps",
   "api_routers": [],
   "requires": []
 }
