@@ -3,9 +3,10 @@
 //
 // Discovers every module UI at build time via a Vite glob over
 // modules/<name>/ui/index.jsx, each default-exporting its contract:
-//     { id, path, Page, Ambient?, settings? }
-//   • Page     — the nav route component
-//   • Ambient  — optional background renderer
+//     { id, path?, Page?, Ambient?, Overlay?, settings? }
+//   • Page     — the nav route component (omit for a headless module)
+//   • Ambient  — optional background renderer (painted BEHIND the UI)
+//   • Overlay  — optional HUD renderer (painted ON TOP, even in immersive)
 //   • settings — optional Settings panel: { title, Panel, defaultOpen?, padded? }
 //
 // Both the shell (App.jsx → routes + ambient) and Settings (→ settings panels)

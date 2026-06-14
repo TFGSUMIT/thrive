@@ -12,7 +12,6 @@ import { api } from './api'
 import LoginPage   from './components/LoginPage'
 import LandingPage from './pages/LandingPage'
 import SettingsPage from './pages/SettingsPage'
-import FpsMeter    from './components/FpsMeter'
 import { MODULES } from './moduleRegistry'
 
 // Module UIs are discovered entirely at build time (see moduleRegistry.js).
@@ -186,6 +185,26 @@ function AmbientBackground() {
   )
 }
 
+// ── module overlays (HUD) ─────────────────────────────────────────────────────
+// A module may declare an `Overlay` component (like `Ambient`, but painted ON
+// TOP of everything, even in immersive mode). Core renders the overlays of every
+// active (installed+enabled) module — it names none of them. e.g. the FPS module.
+const OVERLAYS = MODULES.filter(m => m.Overlay).map(m => ({ id: m.id, Comp: m.Overlay }))
+function ModuleOverlays() {
+  const { user } = useAuth()
+  const [modules, setModules] = useState([])
+  useEffect(() => {
+    if (!user) { setModules([]); return }
+    const check = () => api.get('/modules').then(setModules).catch(() => {})
+    check()
+    window.addEventListener('thrive:modules-changed', check)
+    return () => window.removeEventListener('thrive:modules-changed', check)
+  }, [user])
+  return OVERLAYS
+    .filter(o => { const m = modules.find(x => x.id === o.id); return m && m.installed && m.enabled })
+    .map(o => { const Comp = o.Comp; return <Comp key={o.id} /> })
+}
+
 // ── root ────────────────────────────────────────────────────────────────────
 // What loads at '/' is the server-wide "front page" setting (Settings → Front
 // page): a module's nav_path, or the module tiles (LandingPage). When unset it
@@ -229,14 +248,15 @@ function Shell() {
     <>
       <AmbientBackground />
       {!immersive && <TopNav />}
-      {/* always-on FPS badge (Settings → UI) — shown even in immersive so it can
-          read the blackhole/ambient frame-rate over a full-screen renderer */}
-      <FpsMeter />
+      {/* module HUD overlays (e.g. the FPS module) — painted on top, even in
+          immersive so they can read frame-rate over a full-screen renderer */}
+      <ModuleOverlays />
       <main style={{ marginTop: immersive ? 0 : 48, minHeight: immersive ? '100vh' : 'calc(100vh - 48px)' }}>
         <Routes>
           <Route path="/"         element={<RootRoute />} />
-          {/* module routes — emitted from the registry, not hardcoded */}
-          {MODULES.map(m => {
+          {/* module routes — emitted from the registry, not hardcoded.
+              Headless modules (no nav route, e.g. fps) declare no path/Page. */}
+          {MODULES.filter(m => m.path && m.Page).map(m => {
             const Page = m.Page
             return <Route key={m.id} path={m.path} element={<Page />} />
           })}

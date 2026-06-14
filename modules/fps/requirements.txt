@@ -1,0 +1,1 @@
+# FPS Meter module — no backend deps (UI-only overlay)

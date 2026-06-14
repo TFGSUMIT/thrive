@@ -7,7 +7,6 @@ import { useAuth } from '../context/AuthContext'
 import { api } from '../api'
 import { THEMES, applyTheme, DEFAULT_THEME } from '../theme'
 import EmojiPicker from '../components/EmojiPicker'
-import { FPS_KEY } from '../components/FpsMeter'
 import { MODULES } from '../moduleRegistry'
 
 const card = { background: 'var(--bg-secondary,#181818)', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }
@@ -155,13 +154,6 @@ function UISection() {
     try { localStorage.setItem(UI_ALPHA_KEY, String(v)) } catch {}
   }
 
-  // FPS overlay — per-device (this screen), like opacity/ambient
-  const [showFps, setShowFps] = useState(() => { try { return localStorage.getItem(FPS_KEY) === '1' } catch { return false } })
-  const toggleFps = (v) => {
-    setShowFps(v)
-    try { localStorage.setItem(FPS_KEY, v ? '1' : '0') } catch {}
-    window.dispatchEvent(new Event('thrive:fps-changed'))
-  }
   return (
     <div style={body}>
       <div style={lbl}>Theme</div>
@@ -180,16 +172,6 @@ function UISection() {
       <input type="range" min="0.3" max="1" step="0.01" value={alpha}
         title="Lower to let the background show through panels & nav."
         onChange={e => apply(parseFloat(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent)' }} />
-
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 18 }}>
-        <div>
-          <div style={lbl}>FPS counter</div>
-          <div style={{ fontSize: 10, color: 'var(--text-tertiary,#666)' }}>
-            Tiny frame-rate badge, bottom-right. Handy for a heavy ambient on weak hardware. Per device.
-          </div>
-        </div>
-        <Switch on={showFps} onChange={toggleFps} />
-      </div>
     </div>
   )
 }
