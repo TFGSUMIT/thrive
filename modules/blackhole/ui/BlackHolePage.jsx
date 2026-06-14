@@ -97,7 +97,7 @@ export default function BlackHolePage() {
   const bhRef = useRef(null)
   const [presets, setPresets] = useState([])         // DB presets
   const [sel, setSel] = useState('b:artwall')        // selected dropdown key
-  const [qual, setQual] = useState(PRESETS.artwall.quality) // quality preset name
+  const [qual, setQual] = useState('auto')           // default: self-tune (smooth on weak GPUs; pick ultra manually for full detail)
   const [, force] = useState(0)                       // re-render for slider readouts
   const [saveName, setSaveName] = useState('')
   const [collapsed, setCollapsed] = useState(false)  // popout panel state
@@ -117,7 +117,7 @@ export default function BlackHolePage() {
     const canvas = canvasRef.current
     if (!canvas) return
     const bh = new BlackHoleRenderer(canvas, { ...PRESETS.artwall.params }, {
-      quality: PRESETS.artwall.quality, respectReducedMotion: false,
+      quality: 'auto', respectReducedMotion: false,
       toggles: { ...PRESETS.artwall.toggles },
     })
     bhRef.current = bh
