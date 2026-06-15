@@ -427,10 +427,19 @@ export default function MPGPage({ showToast, showConfirm }) {
     } catch {}
     const reader = new FileReader();
     reader.onload = e => {
-      setCropSrc(e.target.result);
+      const dataUrl = e.target.result;
+      if (zone === "odometer") setOdoThumb(dataUrl); else setPumpThumb(dataUrl);
+      // No vision model? Don't crop/OCR — just keep the photo with the fill-up as
+      // a record; the numbers get entered by hand in the form below.
+      if (visionModels.length === 0) {
+        const b64 = dataUrl.split(",")[1];
+        if (zone === "odometer") { pendingImg.current.odometer = b64; setOdoStatus("Photo attached — enter the mileage below"); setOdoType("ok"); }
+        else { pendingImg.current.pump = b64; setPumpStatus("Photo attached — enter sale & gallons below"); setPumpType("ok"); }
+        return;
+      }
+      setCropSrc(dataUrl);
       // odometer = single crop; pump = two crops (sale first, then gallons)
       setCropStep(zone === "odometer" ? "odometer" : "pump-sale");
-      if (zone === "odometer") setOdoThumb(e.target.result); else setPumpThumb(e.target.result);
     };
     reader.readAsDataURL(file);
   };
@@ -787,7 +796,6 @@ export default function MPGPage({ showToast, showConfirm }) {
               {/* vision capture — only when LM Studio is available; otherwise the
                   form below is plain manual entry */}
               {visionReady && (
-                <>
                   <div style={{ marginBottom: 14 }}>
                     <label style={{ ...labelStyle, display: "block", marginBottom: 4 }}>
                       Vision model {modelHost && <span style={{ opacity: 0.6 }}>· {modelHost}</span>}
@@ -810,11 +818,13 @@ export default function MPGPage({ showToast, showConfirm }) {
                       </div>
                     )}
                   </div>
-
-                  <PhotoButton label="Odometer photo" hint="Dashboard mileage" thumb={odoThumb} busy={odoBusy} status={odoStatus} statusType={odoType} onPick={f => pickPhoto("odometer", f)} canRetry={!!odoB64} onRetry={() => retryExtract("odometer")} />
-                  <PhotoButton label="Pump photo" hint="Sale total, then gallons" thumb={pumpThumb} busy={pumpBusy} status={pumpStatus} statusType={pumpType} onPick={f => pickPhoto("pump", f)} canRetry={!!(pumpSaleB64 || pumpGallonsB64)} onRetry={() => retryExtract("pump")} />
-                </>
               )}
+
+              {/* photo capture — ALWAYS shown. With a vision model it auto-reads the
+                  numbers; without one it just attaches the photo to the fill-up as a
+                  record while you enter the values manually below. */}
+              <PhotoButton label="Odometer photo" hint={visionReady ? "Dashboard mileage" : "Dashboard mileage · saved with entry"} thumb={odoThumb} busy={odoBusy} status={odoStatus} statusType={odoType} onPick={f => pickPhoto("odometer", f)} canRetry={!!odoB64} onRetry={() => retryExtract("odometer")} />
+              <PhotoButton label="Pump photo" hint={visionReady ? "Sale total, then gallons" : "Receipt / pump · saved with entry"} thumb={pumpThumb} busy={pumpBusy} status={pumpStatus} statusType={pumpType} onPick={f => pickPhoto("pump", f)} canRetry={!!(pumpSaleB64 || pumpGallonsB64)} onRetry={() => retryExtract("pump")} />
 
               {[
                 { id: "odometer", label: "Odometer (mi)",              type: "number", step: "1",     placeholder: "56197"  },
