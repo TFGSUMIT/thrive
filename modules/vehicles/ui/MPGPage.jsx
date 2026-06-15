@@ -915,8 +915,8 @@ export default function MPGPage({ showToast, showConfirm }) {
                 <div style={{ textAlign: "center", padding: "2rem 0", fontSize: 12, color: "var(--text-tertiary,#666)", lineHeight: 1.8 }}>No fill-ups logged yet.<br/>Add your first entry to get started.</div>
               ) : (
                 <>
-                  <div style={{ display: "grid", gridTemplateColumns: "92px 1fr 48px 52px 60px 56px", gap: 6, padding: "8px 0", borderBottom: "1px solid var(--border-color,#2a2a2a)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-tertiary,#666)" }}>
-                    <span>Date</span><span>Station</span><span style={{ textAlign: "right" }}>MPG</span><span style={{ textAlign: "right" }}>Gal</span><span style={{ textAlign: "right" }}>Total</span><span style={{ textAlign: "right" }}>$/gal</span>
+                  <div style={{ display: "grid", gridTemplateColumns: "92px 64px 1fr 48px 52px 60px 56px", gap: 6, padding: "8px 0", borderBottom: "1px solid var(--border-color,#2a2a2a)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-tertiary,#666)" }}>
+                    <span>Date</span><span style={{ textAlign: "right" }}>Odo</span><span>Station</span><span style={{ textAlign: "right" }}>MPG</span><span style={{ textAlign: "right" }}>Gal</span><span style={{ textAlign: "right" }}>Total</span><span style={{ textAlign: "right" }}>$/gal</span>
                   </div>
                   {[...entries].reverse().map(e => {
                     const mpgColor = e.mpg == null ? "var(--text-tertiary,#666)" : e.mpg >= (avg || 0) ? "var(--color-success,#22c55e)" : "var(--color-danger,#ef4444)";
@@ -929,8 +929,9 @@ export default function MPGPage({ showToast, showConfirm }) {
                         {/* summary row — click to expand */}
                         <div
                           onClick={() => { const open = !isOpen; setExpandedId(open ? e.id : null); setEditing(null); if (open && entryImages[e.id] === undefined) loadEntryImages(e.id); }}
-                          style={{ display: "grid", gridTemplateColumns: "92px 1fr 48px 52px 60px 56px", gap: 6, padding: "8px 0", fontSize: 12, alignItems: "center", cursor: "pointer", background: isOpen ? "var(--bg-tertiary,#1e1e1e)" : "transparent" }}>
+                          style={{ display: "grid", gridTemplateColumns: "92px 64px 1fr 48px 52px 60px 56px", gap: 6, padding: "8px 0", fontSize: 12, alignItems: "center", cursor: "pointer", background: isOpen ? "var(--bg-tertiary,#1e1e1e)" : "transparent" }}>
                           <span style={{ color: "var(--text-secondary,#aaa)" }}>{e.date}</span>
+                          <span style={{ textAlign: "right", fontFamily: "monospace", fontSize: 11, color: "var(--text-tertiary,#888)" }} title="Odometer">{e.odometer != null ? Math.round(e.odometer).toLocaleString() : "—"}</span>
                           <span style={{ fontSize: 11, color: "var(--text-tertiary,#888)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={e.station || ""}>{e.station || e.notes || ""}</span>
                           <span style={{ textAlign: "right", fontWeight: 500, fontSize: 13, color: mpgColor }}>{fmt(e.mpg)}</span>
                           <span style={{ textAlign: "right", color: "var(--text-secondary,#aaa)" }}>{fmt(e.gallons, 2)}</span>
