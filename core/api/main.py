@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from routers.auth import router as auth_router, current_user_from_request, PUBLIC_PATHS
 from routers.accounts import router as accounts_router
+from routers.connections import router as connections_router
 import modules as mod_registry
 
 app = FastAPI(title="thrive", version="0.1.0")
@@ -35,6 +36,7 @@ async def auth_gate(request: Request, call_next):
 # ── core routers ──────────────────────────────────────────────────────────────
 app.include_router(auth_router)
 app.include_router(accounts_router)
+app.include_router(connections_router)
 
 # ── modules api ───────────────────────────────────────────────────────────────
 @app.get("/modules")

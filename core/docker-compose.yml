@@ -16,10 +16,13 @@ services:
     volumes:
       - ./data:/data
       - ../modules:/app/modules   # modules live at thrive/modules — mounted live, no rebuild
+      - thrive_keys:/keys         # personal-secret encryption key — SEPARATE from the
+                                  # DB volume so a DB backup/NAS copy can't decrypt it
     environment:
       - PYTHONUNBUFFERED=1     # flush print() immediately so [modules] logs aren't buffered
       - DB_FILE=/data/thrive.db
       - MODULES_DIR=/app/modules
+      - THRIVE_KEY_FILE=/keys/connections.key
       - COOKIE_SECURE=false   # http dev on :9500 — Secure cookies get dropped over http
       - SESSION_DAYS=30
       # lmstudio module: default local LM Studio host for vision OCR (override per
@@ -56,6 +59,10 @@ services:
 # modules/vault/compose.yml so it runs ONLY when the vault module is installed.
 # Bring up the full stack (core + every present module's containers) with
 # core/thrive-compose.sh, which merges each modules/*/compose.yml.
+volumes:
+  thrive_keys:        # holds the personal-secret encryption key (crypto.py); a
+                      # named volume kept local to the host, apart from the DB
+
 networks:
   internal:
     driver: bridge
