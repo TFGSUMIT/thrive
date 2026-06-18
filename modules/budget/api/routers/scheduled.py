@@ -2,12 +2,12 @@
 # routers/scheduled.py — Budget module: recurring/scheduled transactions
 # thrive module `budget`
 # =============================================================================
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 import sqlite3
 
-from routers.auth import get_db as _connect
+from routers.auth import get_db as _connect, current_profile_id, visible_owned_ids
 
 import os, sqlite3
 
@@ -118,12 +118,18 @@ _SELECT = """
 """
 
 
+def _in(ids):
+    return (f"({','.join('?' * len(ids))})", list(ids)) if ids else ("(NULL)", [])
+
+
 @router.get("/")
-def list_scheduled(db=Depends(get_db)):
+def list_scheduled(request: Request, db=Depends(get_db)):
+    vph, vparams = _in(visible_owned_ids(db, "budget_accounts", current_profile_id(request)))
     rows = db.execute(f"""
         {_SELECT}
+        WHERE s.account_id IN {vph}
         ORDER BY LOWER(p.name)
-    """).fetchall()
+    """, vparams).fetchall()
     result = []
     for r in rows:
         d = dict(r)
@@ -133,11 +139,12 @@ def list_scheduled(db=Depends(get_db)):
 
 
 @router.get("/{scheduled_id}")
-def get_scheduled(scheduled_id: int, db=Depends(get_db)):
+def get_scheduled(scheduled_id: int, request: Request, db=Depends(get_db)):
+    vph, vparams = _in(visible_owned_ids(db, "budget_accounts", current_profile_id(request)))
     row = db.execute(f"""
         {_SELECT}
-        WHERE s.id = ?
-    """, (scheduled_id,)).fetchone()
+        WHERE s.id = ? AND s.account_id IN {vph}
+    """, (scheduled_id, *vparams)).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Scheduled transaction not found")
     d = dict(row)

@@ -3,12 +3,12 @@
 # thrive module `budget`
 # =============================================================================
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from typing import Optional, List
 import sqlite3
 
-from routers.auth import get_db as _connect
+from routers.auth import get_db as _connect, current_profile_id, visible_owned_ids
 
 import os, sqlite3
 
@@ -32,6 +32,10 @@ def to_cents(dollars: float) -> int:
 
 def from_cents(cents: int) -> float:
     return round((cents or 0) / 100, 2)
+
+def _in(ids):
+    """(placeholder_group, params) for `col IN <group>`; matches nothing if empty."""
+    return (f"({','.join('?' * len(ids))})", list(ids)) if ids else ("(NULL)", [])
 
 def init_db():
     db = _connect()
@@ -223,6 +227,7 @@ _SORT_COLUMNS = {
 
 @router.get("/")
 def list_transactions(
+    request:     Request,
     account_id:  Optional[int] = Query(None),
     from_date:   Optional[str] = Query(None),
     to_date:     Optional[str] = Query(None),
@@ -235,8 +240,11 @@ def list_transactions(
     offset:      int           = Query(0, ge=0),
     db=Depends(get_db),
 ):
-    where  = []
-    params = []
+    # personal-data: only transactions on budget accounts this viewer can see
+    visible_ids = visible_owned_ids(db, "budget_accounts", current_profile_id(request))
+    vph, vparams = _in(visible_ids)
+    where  = [f"t.account_id IN {vph}"]
+    params = list(vparams)
     if account_id:
         where.append("t.account_id = ?")
         params.append(account_id)
@@ -274,7 +282,7 @@ def list_transactions(
     chronological = sort == "date" and sort_dir == "DESC"
 
     running = None
-    if account_id and chronological:
+    if account_id and account_id in visible_ids and chronological:
         # Total cleared/reconciled balance for the account (Unverified excluded — they
         # don't move the running balance in the loop below either).
         total = db.execute(
@@ -329,8 +337,9 @@ def lookup_payee(raw_name: str = Query(...), db=Depends(get_db)):
 
 
 @router.get("/{transaction_id}")
-def get_transaction(transaction_id: int, db=Depends(get_db)):
-    row = db.execute(f"{_SELECT} WHERE t.id = ?", (transaction_id,)).fetchone()
+def get_transaction(transaction_id: int, request: Request, db=Depends(get_db)):
+    vph, vparams = _in(visible_owned_ids(db, "budget_accounts", current_profile_id(request)))
+    row = db.execute(f"{_SELECT} WHERE t.id = ? AND t.account_id IN {vph}", (transaction_id, *vparams)).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
     d = _row_to_dict(row)

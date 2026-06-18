@@ -197,6 +197,15 @@ def ownership_filter(profile_id: Optional[int], scope: str = "all",
         return (f"{column} = ?", [profile_id])
     return (f"({column} IS NULL OR {column} = ?)", [profile_id])   # 'all'
 
+def visible_owned_ids(db, table: str, profile_id: Optional[int], scope: str = "all",
+                      id_col: str = "id", owner_col: str = "owner_user_id") -> list:
+    """Ids of rows in `table` the viewer may see — for use as an `IN (...)` filter
+    on related tables (e.g. transactions of the budget accounts you can see), so
+    personal rows' children stay private too. `table`/columns are caller-supplied
+    constants; never pass user input."""
+    own_sql, own_params = ownership_filter(profile_id, scope, column=owner_col)
+    return [r[0] for r in db.execute(f"SELECT {id_col} FROM {table} WHERE {own_sql}", own_params).fetchall()]
+
 def _set_cookie(response: Response, token: str):
     response.set_cookie(key=COOKIE_NAME, value=token, max_age=SESSION_DAYS * 86400,
                         httponly=True, secure=COOKIE_SECURE, samesite="lax", path="/")

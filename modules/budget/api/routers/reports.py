@@ -2,14 +2,22 @@
 # routers/reports.py — Budget module: reporting endpoints
 # thrive module `budget`
 # =============================================================================
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from typing import Optional
 from datetime import date, timedelta
 import calendar
 
-from routers.auth import get_db   # platform connection (returns a conn to close)
+from routers.auth import get_db, current_profile_id, visible_owned_ids   # platform conn + ownership
 
 router = APIRouter(prefix="/reports", tags=["reports"])
+
+
+def _acct_filter(conn, request, col="t.account_id"):
+    """(`col IN (...)`, params) — limits a report to the budget accounts this
+    viewer can see, so personal accounts' transactions/totals stay private."""
+    ids = visible_owned_ids(conn, "budget_accounts", current_profile_id(request))
+    ph = f"({','.join('?' * len(ids))})" if ids else "(NULL)"
+    return f"{col} IN {ph}", list(ids)
 
 
 def resolve_range(range_type: str, from_date: Optional[str], to_date: Optional[str]):
@@ -77,6 +85,7 @@ def build_breakdown(rows: list, sign: int) -> list:
 
 @router.get("/category-transactions")
 def category_transactions(
+    request:    Request,
     range_type: str           = Query("last30", alias="range"),
     from_date:  Optional[str] = Query(None,     alias="from"),
     to_date:    Optional[str] = Query(None,     alias="to"),
@@ -107,6 +116,8 @@ def category_transactions(
 
     conn = get_db()
     try:
+        vsql, vparams = _acct_filter(conn, request, "t.account_id")
+        where.append(vsql); params.extend(vparams)
         rows = conn.execute(f"""
             SELECT t.id, t.date, t.amount_cents,
                    COALESCE(p.name, '—')             AS payee,
@@ -124,6 +135,7 @@ def category_transactions(
 
 @router.get("/category-breakdown")
 def category_breakdown(
+    request:    Request,
     range_type: str          = Query("last30", alias="range"),
     from_date:  Optional[str] = Query(None,    alias="from"),
     to_date:    Optional[str] = Query(None,    alias="to"),
@@ -131,7 +143,8 @@ def category_breakdown(
     d_from, d_to = resolve_range(range_type, from_date, to_date)
     conn = get_db()
     try:
-        rows = conn.execute("""
+        vsql, vparams = _acct_filter(conn, request, "t.account_id")
+        rows = conn.execute(f"""
             SELECT
               COALESCE(parent.id,   cat.id)                    AS root_id,
               COALESCE(parent.name, cat.name, 'Uncategorized') AS root_name,
@@ -143,8 +156,9 @@ def category_breakdown(
             LEFT JOIN categories parent ON parent.id = cat.parent_id
             WHERE t.date >= ? AND t.date <= ?
               AND t.transfer_account_id IS NULL
+              AND {vsql}
             GROUP BY COALESCE(parent.id, cat.id), cat.id
-        """, (d_from, d_to)).fetchall()
+        """, (d_from, d_to, *vparams)).fetchall()
     finally:
         conn.close()
 
@@ -161,6 +175,7 @@ def category_breakdown(
 
 @router.get("/cash-flow")
 def cash_flow(
+    request:   Request,
     months:    int           = Query(12, ge=1, le=120),  # trailing window when no custom range
     from_date: Optional[str] = Query(None, alias="from"),
     to_date:   Optional[str] = Query(None, alias="to"),
@@ -178,14 +193,16 @@ def cash_flow(
 
     conn = get_db()
     try:
-        rows = conn.execute("""
+        vsql, vparams = _acct_filter(conn, request, "t.account_id")
+        rows = conn.execute(f"""
             SELECT strftime('%Y-%m', t.date) AS ym,
                    SUM(CASE WHEN t.amount_cents > 0 THEN  t.amount_cents ELSE 0 END) AS income_cents,
                    SUM(CASE WHEN t.amount_cents < 0 THEN -t.amount_cents ELSE 0 END) AS expense_cents
             FROM transactions t
             WHERE t.date >= ? AND t.date <= ? AND t.transfer_account_id IS NULL
+              AND {vsql}
             GROUP BY ym
-        """, (d_from, d_to)).fetchall()
+        """, (d_from, d_to, *vparams)).fetchall()
     finally:
         conn.close()
 
@@ -259,7 +276,7 @@ def _occurrences(freq: str, day, anchor, win_from: date, win_to: date) -> list:
 
 
 @router.get("/cash-flow-projection")
-def cash_flow_projection(months: int = Query(3, ge=1, le=24)):
+def cash_flow_projection(request: Request, months: int = Query(3, ge=1, le=24)):
     """Projected monthly income / expense / net for the next `months` months,
     derived purely from scheduled (recurring) transactions — each rule expanded
     into concrete occurrences. Transfers excluded. Starts the month AFTER the
@@ -269,11 +286,13 @@ def cash_flow_projection(months: int = Query(3, ge=1, le=24)):
 
     conn = get_db()
     try:
-        rows = conn.execute("""
+        vsql, vparams = _acct_filter(conn, request, "account_id")
+        rows = conn.execute(f"""
             SELECT amount_cents, frequency, day, anchor_date
             FROM scheduled
             WHERE transfer_account_id IS NULL
-        """).fetchall()
+              AND {vsql}
+        """, vparams).fetchall()
     finally:
         conn.close()
 
@@ -303,7 +322,7 @@ def cash_flow_projection(months: int = Query(3, ge=1, le=24)):
 
 
 @router.get("/scheduled-occurrences")
-def scheduled_occurrences(start: str = Query(...), end: str = Query(...)):
+def scheduled_occurrences(request: Request, start: str = Query(...), end: str = Query(...)):
     """Every scheduled (recurring) transaction expanded into concrete dated
     occurrences within [start, end] (inclusive, ISO YYYY-MM-DD — datetime strings
     are accepted and truncated). Read-only feed for other modules to overlay
@@ -312,7 +331,8 @@ def scheduled_occurrences(start: str = Query(...), end: str = Query(...)):
     win_to   = date.fromisoformat(end[:10])
     conn = get_db()
     try:
-        rows = conn.execute("""
+        vsql, vparams = _acct_filter(conn, request, "s.account_id")
+        rows = conn.execute(f"""
             SELECT s.id, s.amount_cents, s.frequency, s.day, s.anchor_date,
                    s.transfer_account_id,
                    p.name AS payee_name,
@@ -326,7 +346,8 @@ def scheduled_occurrences(start: str = Query(...), end: str = Query(...)):
             LEFT JOIN categories c           ON c.id = s.category_id
             LEFT JOIN categories parent      ON parent.id = c.parent_id
             LEFT JOIN budget_accounts ta     ON ta.id = s.transfer_account_id
-        """).fetchall()
+            WHERE {vsql}
+        """, vparams).fetchall()
     finally:
         conn.close()
 
