@@ -121,6 +121,17 @@ _SELECT = """
 def _in(ids):
     return (f"({','.join('?' * len(ids))})", list(ids)) if ids else ("(NULL)", [])
 
+def _assert_accounts_visible(db, request, *account_ids):
+    visible = set(visible_owned_ids(db, "budget_accounts", current_profile_id(request)))
+    for aid in account_ids:
+        if aid is not None and aid not in visible:
+            raise HTTPException(status_code=404, detail="Account not found")
+
+def _assert_sched_visible(db, request, scheduled_id):
+    row = db.execute("SELECT account_id FROM scheduled WHERE id = ?", (scheduled_id,)).fetchone()
+    if row is None or row["account_id"] not in set(visible_owned_ids(db, "budget_accounts", current_profile_id(request))):
+        raise HTTPException(status_code=404, detail="Scheduled transaction not found")
+
 
 @router.get("/")
 def list_scheduled(request: Request, db=Depends(get_db)):
@@ -153,7 +164,8 @@ def get_scheduled(scheduled_id: int, request: Request, db=Depends(get_db)):
 
 
 @router.post("/", status_code=201)
-def add_scheduled(body: ScheduledIn, db=Depends(get_db)):
+def add_scheduled(body: ScheduledIn, request: Request, db=Depends(get_db)):
+    _assert_accounts_visible(db, request, body.account_id, body.transfer_account_id)
     freq = body.frequency.strip().lower()
     if freq not in ALL_FREQS:
         raise HTTPException(status_code=400, detail=f"Invalid frequency. Use: {', '.join(sorted(ALL_FREQS))}")
@@ -178,7 +190,9 @@ def add_scheduled(body: ScheduledIn, db=Depends(get_db)):
 
 
 @router.patch("/{scheduled_id}")
-def update_scheduled(scheduled_id: int, body: ScheduledUpdate, db=Depends(get_db)):
+def update_scheduled(scheduled_id: int, body: ScheduledUpdate, request: Request, db=Depends(get_db)):
+    _assert_sched_visible(db, request, scheduled_id)
+    _assert_accounts_visible(db, request, body.account_id, body.transfer_account_id)
     row = db.execute(
         """SELECT id, account_id, payee_id, category_id, transfer_account_id,
                   amount_cents, frequency, day, anchor_date
@@ -223,7 +237,8 @@ def update_scheduled(scheduled_id: int, body: ScheduledUpdate, db=Depends(get_db
 
 
 @router.delete("/{scheduled_id}", status_code=204)
-def delete_scheduled(scheduled_id: int, db=Depends(get_db)):
+def delete_scheduled(scheduled_id: int, request: Request, db=Depends(get_db)):
+    _assert_sched_visible(db, request, scheduled_id)
     row = db.execute(
         "SELECT id FROM scheduled WHERE id = ?", (scheduled_id,)
     ).fetchone()

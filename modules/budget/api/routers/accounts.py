@@ -45,7 +45,7 @@ def init_db():
         db.execute("""
             CREATE TABLE IF NOT EXISTS budget_accounts (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                name          TEXT NOT NULL UNIQUE,
+                name          TEXT NOT NULL,
                 institution   TEXT,
                 number        TEXT,
                 on_budget     INTEGER NOT NULL DEFAULT 1,
@@ -63,6 +63,33 @@ def init_db():
         # personal ownership: NULL = household (shared), set = personal to a profile
         if "owner_user_id" not in cols:
             db.execute("ALTER TABLE budget_accounts ADD COLUMN owner_user_id INTEGER")
+        # Migrate the legacy GLOBAL UNIQUE(name) → per-scope uniqueness so two
+        # people can each have a personal 'Checking'. The inline UNIQUE left an
+        # auto-index; if it's still there, rebuild the table without it (ids and
+        # FK references preserved), then add partial unique indexes: household
+        # names unique, personal names unique per owner.
+        idx = db.execute("PRAGMA index_list(budget_accounts)").fetchall()
+        if any(r[1].startswith("sqlite_autoindex_budget_accounts") for r in idx):
+            db.executescript("""
+                PRAGMA foreign_keys=OFF;
+                CREATE TABLE budget_accounts__new (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name          TEXT NOT NULL,
+                    institution   TEXT,
+                    number        TEXT,
+                    on_budget     INTEGER NOT NULL DEFAULT 1,
+                    vault_item_id TEXT,
+                    position      INTEGER,
+                    owner_user_id INTEGER
+                );
+                INSERT INTO budget_accounts__new (id, name, institution, number, on_budget, vault_item_id, position, owner_user_id)
+                    SELECT id, name, institution, number, on_budget, vault_item_id, position, owner_user_id FROM budget_accounts;
+                DROP TABLE budget_accounts;
+                ALTER TABLE budget_accounts__new RENAME TO budget_accounts;
+                PRAGMA foreign_keys=ON;
+            """)
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_budget_accounts_household ON budget_accounts(name) WHERE owner_user_id IS NULL")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_budget_accounts_personal  ON budget_accounts(owner_user_id, name) WHERE owner_user_id IS NOT NULL")
         db.commit()
     finally:
         db.close()

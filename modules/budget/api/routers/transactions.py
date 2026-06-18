@@ -37,6 +37,31 @@ def _in(ids):
     """(placeholder_group, params) for `col IN <group>`; matches nothing if empty."""
     return (f"({','.join('?' * len(ids))})", list(ids)) if ids else ("(NULL)", [])
 
+# ── write guards (personal-data): you can't mutate accounts/transactions you
+# can't see, even by guessing ids ───────────────────────────────────────────
+def _visible_set(db, request):
+    return set(visible_owned_ids(db, "budget_accounts", current_profile_id(request)))
+
+def _assert_accounts_visible(db, request, *account_ids):
+    visible = _visible_set(db, request)
+    for aid in account_ids:
+        if aid is not None and aid not in visible:
+            raise HTTPException(status_code=404, detail="Account not found")
+
+def _assert_txn_visible(db, request, transaction_id):
+    row = db.execute("SELECT account_id FROM transactions WHERE id = ?", (transaction_id,)).fetchone()
+    if row is None or row["account_id"] not in _visible_set(db, request):
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+def _visible_txn_ids(db, request, ids):
+    """Subset of `ids` whose transactions sit on accounts the viewer can see."""
+    if not ids:
+        return []
+    visible = _visible_set(db, request)
+    ph = ",".join("?" * len(ids))
+    rows = db.execute(f"SELECT id, account_id FROM transactions WHERE id IN ({ph})", list(ids)).fetchall()
+    return [r["id"] for r in rows if r["account_id"] in visible]
+
 def init_db():
     db = _connect()
     try:
@@ -350,7 +375,8 @@ def get_transaction(transaction_id: int, request: Request, db=Depends(get_db)):
 
 
 @router.post("/", status_code=201)
-def add_transaction(body: TransactionIn, db=Depends(get_db)):
+def add_transaction(body: TransactionIn, request: Request, db=Depends(get_db)):
+    _assert_accounts_visible(db, request, body.account_id, body.transfer_account_id)
     if body.cleared is not None and body.cleared not in CLEARED_VALUES:
         raise HTTPException(status_code=400, detail="cleared must be 'Cleared', 'Reconciled', or 'Unverified'")
 
@@ -389,7 +415,8 @@ def add_transaction(body: TransactionIn, db=Depends(get_db)):
 
 
 @router.post("/import", status_code=201)
-def bulk_import(rows: List[ImportRow], db=Depends(get_db)):
+def bulk_import(rows: List[ImportRow], request: Request, db=Depends(get_db)):
+    _assert_accounts_visible(db, request, *[r.account_id for r in rows])
     inserted = []
     for row in rows:
         cur = db.execute(
@@ -406,7 +433,9 @@ def bulk_import(rows: List[ImportRow], db=Depends(get_db)):
 
 
 @router.post("/{transaction_id}/verify", status_code=200)
-def verify_transaction(transaction_id: int, body: VerifyMatchBody, db=Depends(get_db)):
+def verify_transaction(transaction_id: int, body: VerifyMatchBody, request: Request, db=Depends(get_db)):
+    _assert_txn_visible(db, request, transaction_id)
+    _assert_accounts_visible(db, request, body.transfer_account_id)
     uv = db.execute(
         """SELECT id, account_id, cleared, matched_transaction_id, memo,
                   amount_cents, date
@@ -523,8 +552,9 @@ def verify_transaction(transaction_id: int, body: VerifyMatchBody, db=Depends(ge
 # =============================================================================
 
 @router.get("/{transaction_id}/splits")
-def get_splits(transaction_id: int, db=Depends(get_db)):
+def get_splits(transaction_id: int, request: Request, db=Depends(get_db)):
     """Get all splits for a transaction."""
+    _assert_txn_visible(db, request, transaction_id)
     row = db.execute("SELECT id FROM transactions WHERE id = ?", (transaction_id,)).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
@@ -533,12 +563,13 @@ def get_splits(transaction_id: int, db=Depends(get_db)):
 
 
 @router.put("/{transaction_id}/splits", status_code=200)
-def set_splits(transaction_id: int, splits: List[SplitIn], db=Depends(get_db)):
+def set_splits(transaction_id: int, splits: List[SplitIn], request: Request, db=Depends(get_db)):
     """
     Replace all splits for a transaction.
     Pass an empty list to remove splits (reverts to single-category mode).
     Validates that split amounts sum to transaction amount.
     """
+    _assert_txn_visible(db, request, transaction_id)
     row = db.execute(
         "SELECT id, amount_cents FROM transactions WHERE id = ?", (transaction_id,)
     ).fetchone()
@@ -568,7 +599,9 @@ def set_splits(transaction_id: int, splits: List[SplitIn], db=Depends(get_db)):
 
 
 @router.patch("/{transaction_id}")
-def update_transaction(transaction_id: int, body: TransactionUpdate, db=Depends(get_db)):
+def update_transaction(transaction_id: int, body: TransactionUpdate, request: Request, db=Depends(get_db)):
+    _assert_txn_visible(db, request, transaction_id)
+    _assert_accounts_visible(db, request, body.account_id, body.transfer_account_id)
     row = db.execute(
         """SELECT id, account_id, payee_id, category_id, transfer_account_id,
                   transfer_transaction_id, amount_cents, date, memo, cleared
@@ -618,7 +651,8 @@ def update_transaction(transaction_id: int, body: TransactionUpdate, db=Depends(
 
 
 @router.delete("/{transaction_id}", status_code=204)
-def delete_transaction(transaction_id: int, db=Depends(get_db)):
+def delete_transaction(transaction_id: int, request: Request, db=Depends(get_db)):
+    _assert_txn_visible(db, request, transaction_id)
     row = db.execute(
         "SELECT id, transfer_transaction_id FROM transactions WHERE id = ?",
         (transaction_id,)
@@ -648,7 +682,10 @@ def delete_transaction(transaction_id: int, db=Depends(get_db)):
 # =============================================================================
 
 @router.post("/bulk/delete", status_code=200)
-def bulk_delete(body: BulkIds, db=Depends(get_db)):
+def bulk_delete(body: BulkIds, request: Request, db=Depends(get_db)):
+    body.ids = _visible_txn_ids(db, request, body.ids)
+    if not body.ids:
+        return {"deleted": 0}
     to_delete = set(body.ids)
     for tid in list(to_delete):
         row = db.execute(
@@ -673,9 +710,12 @@ def bulk_delete(body: BulkIds, db=Depends(get_db)):
 
 
 @router.post("/bulk/status", status_code=200)
-def bulk_status(body: BulkStatus, db=Depends(get_db)):
+def bulk_status(body: BulkStatus, request: Request, db=Depends(get_db)):
     if body.cleared not in CLEARED_VALUES and body.cleared.lower() != "none":
         raise HTTPException(status_code=400, detail="Invalid cleared value")
+    body.ids = _visible_txn_ids(db, request, body.ids)
+    if not body.ids:
+        return {"updated": 0}
     new_cleared  = None if body.cleared.lower() == "none" else body.cleared
     placeholders = ",".join("?" * len(body.ids))
     db.execute(
@@ -687,8 +727,11 @@ def bulk_status(body: BulkStatus, db=Depends(get_db)):
 
 
 @router.post("/bulk/category", status_code=200)
-def bulk_category(body: BulkCategory, db=Depends(get_db)):
+def bulk_category(body: BulkCategory, request: Request, db=Depends(get_db)):
     """Assign a category — skips transactions that have splits."""
+    body.ids = _visible_txn_ids(db, request, body.ids)
+    if not body.ids:
+        return {"updated": 0, "skipped_splits": 0}
     # Filter out split transactions
     placeholders = ",".join("?" * len(body.ids))
     split_ids = {
@@ -709,7 +752,10 @@ def bulk_category(body: BulkCategory, db=Depends(get_db)):
 
 
 @router.post("/bulk/payee", status_code=200)
-def bulk_payee(body: BulkPayee, db=Depends(get_db)):
+def bulk_payee(body: BulkPayee, request: Request, db=Depends(get_db)):
+    body.ids = _visible_txn_ids(db, request, body.ids)
+    if not body.ids:
+        return {"updated": 0}
     placeholders = ",".join("?" * len(body.ids))
     db.execute(
         f"UPDATE transactions SET payee_id = ? WHERE id IN ({placeholders})",
@@ -720,7 +766,8 @@ def bulk_payee(body: BulkPayee, db=Depends(get_db)):
 
 
 @router.post("/bulk/verify", status_code=200)
-def bulk_verify(body: BulkIds, db=Depends(get_db)):
+def bulk_verify(body: BulkIds, request: Request, db=Depends(get_db)):
+    body.ids = _visible_txn_ids(db, request, body.ids)
     verified = 0
     skipped  = 0
 
