@@ -7,7 +7,9 @@ import { useEffect, useState } from 'react'
 import { api } from '@core/api'
 import { useToast } from '@core/context/ToastContext'
 import { useConfirm } from '@core/context/ConfirmModal'
+import { useAuth } from '@core/context/AuthContext'
 import { decryptEncString, loadVaultSymKey } from '@core/utils/vault'
+import ScopeToggle from '@core/components/ScopeToggle'
 import './Page.css'
 
 const fmtMoney = (n) => `$${(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -24,9 +26,11 @@ const SYNC_OPTIONS = [
 export default function AccountsPage({ onNav, vaultToken }) {
     const { showToast } = useToast()
     const { confirm } = useConfirm()
+    const { user } = useAuth()
 
     const [accounts, setAccounts] = useState([])
     const [loading, setLoading] = useState(true)
+    const [scope, setScope] = useState('all')   // all | household | mine (personal-data platform)
     const [sortBy, setSortBy] = useState('default')
     const [expandedId, setExpandedId] = useState(null)
     const [dragId, setDragId] = useState(null)
@@ -45,6 +49,7 @@ export default function AccountsPage({ onNav, vaultToken }) {
     const [newInstitution, setNewInstitution] = useState('')
     const [newNumber, setNewNumber] = useState('')
     const [newOnBudget, setNewOnBudget] = useState(true)
+    const [newPersonal, setNewPersonal] = useState(false)
 
     // edit
     const [editingId, setEditingId] = useState(null)
@@ -52,12 +57,13 @@ export default function AccountsPage({ onNav, vaultToken }) {
     const [editInst, setEditInst] = useState('')
     const [editNumber, setEditNumber] = useState('')
     const [editOnBudget, setEditOnBudget] = useState(true)
+    const [editPersonal, setEditPersonal] = useState(false)
 
     async function load() {
         setLoading(true)
         try {
             const [acctData, connData] = await Promise.all([
-                api.get('/budget/accounts/'),
+                api.get(`/budget/accounts/?scope=${scope}`),
                 api.get('/plaid/connections'),
             ])
             setAccounts(acctData)
@@ -70,7 +76,7 @@ export default function AccountsPage({ onNav, vaultToken }) {
         }
     }
 
-    useEffect(() => { load() }, [])
+    useEffect(() => { load() }, [scope])   // eslint-disable-line react-hooks/exhaustive-deps
 
     // Fetch Vaultwarden ciphers and decrypt their names client-side.
     // Cipher names are E2E encrypted; we decrypt using the user's symmetric key
@@ -128,12 +134,14 @@ export default function AccountsPage({ onNav, vaultToken }) {
                 institution: newInstitution.trim() || null,
                 number: newNumber.trim() || null,
                 on_budget: newOnBudget,
+                personal: newPersonal,
             })
             showToast(`Added '${newName.trim()}'`, 'success')
             setNewName('')
             setNewInstitution('')
             setNewNumber('')
             setNewOnBudget(true)
+            setNewPersonal(false)
             load()
         } catch (e) {
             showToast(e.message, 'error')
@@ -146,6 +154,7 @@ export default function AccountsPage({ onNav, vaultToken }) {
         setEditInst(acct.institution || '')
         setEditNumber(acct.number || '')
         setEditOnBudget(acct.on_budget !== false)
+        setEditPersonal(acct.personal === true)
     }
 
     async function handleSaveEdit(id) {
@@ -156,6 +165,7 @@ export default function AccountsPage({ onNav, vaultToken }) {
                 institution: editInst.trim() || null,
                 number: editNumber.trim() || null,
                 on_budget: editOnBudget,
+                personal: editPersonal,
             })
             showToast('Saved', 'success')
             setEditingId(null)
@@ -284,12 +294,23 @@ export default function AccountsPage({ onNav, vaultToken }) {
                             onChange={e => setNewOnBudget(e.target.checked)}
                         />
                     </label>
+                    {user?.profile && (
+                        <label className="budget-toggle" title="Personal — visible only to you">
+                            <span>🔒 Personal</span>
+                            <input
+                                type="checkbox"
+                                checked={newPersonal}
+                                onChange={e => setNewPersonal(e.target.checked)}
+                            />
+                        </label>
+                    )}
                     <button type="submit" className="btn btn-primary">Add</button>
                 </div>
             </form>
 
             <div className="sched-toolbar">
                 <span className="muted">{accounts.length} accounts</span>
+                <ScopeToggle value={scope} onChange={setScope} />
                 <select
                     className="input sort-select"
                     value={sortBy}
@@ -320,10 +341,13 @@ export default function AccountsPage({ onNav, vaultToken }) {
                                     editInst={editInst}
                                     editNumber={editNumber}
                                     editOnBudget={editOnBudget}
+                                    editPersonal={editPersonal}
+                                    canPersonal={!!user?.profile}
                                     setEditName={setEditName}
                                     setEditInst={setEditInst}
                                     setEditNumber={setEditNumber}
                                     setEditOnBudget={setEditOnBudget}
+                                    setEditPersonal={setEditPersonal}
                                     onSave={() => handleSaveEdit(a.id)}
                                     onCancel={() => setEditingId(null)}
                                 />
@@ -403,6 +427,13 @@ function AccountRow({
                     <span className="sched-id">{acct.id}</span>
                     <span className="sched-payee">{acct.name}</span>
                     {offBudget && <span className="off-budget-tag">off</span>}
+                    {acct.personal && (
+                        <span
+                            className="off-budget-tag"
+                            style={{ background: 'rgba(59,130,246,0.18)', color: '#3b82f6', borderColor: 'rgba(59,130,246,0.4)' }}
+                            title="Personal — visible only to you"
+                        >🔒 personal</span>
+                    )}
                     {hasPlaid && <span className="plaid-badge">plaid</span>}
                     {acct.vault_item_id && (
                         <span
@@ -495,8 +526,8 @@ function AccountRow({
 }
 
 function AccountEditForm({
-    editName, editInst, editNumber, editOnBudget,
-    setEditName, setEditInst, setEditNumber, setEditOnBudget,
+    editName, editInst, editNumber, editOnBudget, editPersonal, canPersonal,
+    setEditName, setEditInst, setEditNumber, setEditOnBudget, setEditPersonal,
     onSave, onCancel,
 }) {
     return (
@@ -521,6 +552,16 @@ function AccountEditForm({
                     onChange={e => setEditOnBudget(e.target.checked)}
                 />
             </div>
+            {canPersonal && (
+                <div className="form-row">
+                    <label title="Personal — visible only to you">🔒 Personal</label>
+                    <input
+                        type="checkbox"
+                        checked={editPersonal}
+                        onChange={e => setEditPersonal(e.target.checked)}
+                    />
+                </div>
+            )}
             <div className="form-actions">
                 <button type="button" className="btn btn-primary" onClick={onSave}>Save</button>
                 <button type="button" className="btn" onClick={onCancel}>Cancel</button>
