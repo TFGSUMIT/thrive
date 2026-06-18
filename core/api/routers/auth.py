@@ -168,6 +168,35 @@ def user_from_token(token: Optional[str]) -> Optional[dict]:
 def current_user_from_request(request: Request) -> Optional[dict]:
     return user_from_token(request.cookies.get(COOKIE_NAME))
 
+
+# ── personal ownership (Phase 1 of the personal-data platform) ────────────────
+# Reusable scoping primitive. A module table that can be personal carries a
+# nullable `owner_user_id` (NULL = household/shared, set = personal to a profile).
+# A module router resolves "me" with current_profile_id() and builds a WHERE
+# clause with ownership_filter(). Default scope is 'all' (household + mine).
+# Guardianship (seeing a dependent's rows) layers on later by widening the id set.
+def current_profile_id(request: Request) -> Optional[int]:
+    """The logged-in account's linked profile id, or None (no profile → can only
+    see household/shared rows)."""
+    u = current_user_from_request(request)
+    if not u:
+        return None
+    p = u.get("profile")
+    return p["id"] if p else None
+
+def ownership_filter(profile_id: Optional[int], scope: str = "all",
+                     column: str = "owner_user_id") -> tuple[str, list]:
+    """(sql_fragment, params) to scope a query by personal ownership:
+         household → shared rows only (owner IS NULL)
+         mine      → my personal rows only
+         all       → shared + mine (default)
+    A profile-less viewer (profile_id is None) only ever sees household rows."""
+    if scope == "household" or profile_id is None:
+        return (f"{column} IS NULL", [])
+    if scope == "mine":
+        return (f"{column} = ?", [profile_id])
+    return (f"({column} IS NULL OR {column} = ?)", [profile_id])   # 'all'
+
 def _set_cookie(response: Response, token: str):
     response.set_cookie(key=COOKIE_NAME, value=token, max_age=SESSION_DAYS * 86400,
                         httponly=True, secure=COOKIE_SECURE, samesite="lax", path="/")
