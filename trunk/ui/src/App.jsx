@@ -338,10 +338,14 @@ export default function App() {
   useEffect(() => {
     const v = parseFloat(localStorage.getItem('thrive:uiAlpha'))
     if (!isNaN(v)) document.documentElement.style.setProperty('--ui-alpha', String(v))
-    // touch kiosk (e.g. the wall): hide the mouse cursor — it's a touch panel
+    // touch kiosk (e.g. the wall): hide the pointer — it's a touch panel. cage
+    // (Wayland) draws a compositor cursor for the touchscreen's pointer interface
+    // that `cursor:none` doesn't reliably reach, so use a 1x1 transparent cursor
+    // image (chromium honors url() cursors over Wayland more reliably than none).
     if ((navigator.maxTouchPoints || 0) > 0) {
+      const blank = 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==") 0 0, none'
       const st = document.createElement('style')
-      st.textContent = '*{cursor:none!important}'
+      st.textContent = '*,*::before,*::after{cursor:' + blank + ' !important}'
       document.head.appendChild(st)
     }
   }, [])

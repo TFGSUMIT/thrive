@@ -34,10 +34,12 @@ export default function LandingPage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
         {enabled.length === 0 ? (
-          <div style={{ background: 'var(--bg-secondary,#181818)', border: '2px dashed var(--border-color,#2a2a2a)', borderRadius: 12, padding: '32px 24px', textAlign: 'center', color: 'var(--text-tertiary,#555)', fontSize: 12, lineHeight: 1.8 }}>
+          <div onClick={() => navigate('/settings')}
+            onMouseEnter={() => setHov('empty')} onMouseLeave={() => setHov(null)}
+            style={{ background: 'var(--bg-secondary,#181818)', border: `2px dashed ${hov === 'empty' ? 'var(--text-tertiary,#666)' : 'var(--border-color,#2a2a2a)'}`, borderRadius: 12, padding: '32px 24px', textAlign: 'center', color: 'var(--text-tertiary,#555)', fontSize: 12, lineHeight: 1.8, cursor: 'pointer', transition: 'border-color 0.15s' }}>
             <div style={{ fontSize: 28, marginBottom: 10 }}>＋</div>
             No modules installed yet.<br />
-            Go to Settings → Modules<br />to add features.
+            <span style={{ color: 'var(--text-secondary,#aaa)' }}>Tap to add features</span><br />in Settings → Modules.
           </div>
         ) : (
           enabled.map(m => (
