@@ -6,7 +6,11 @@ async function request(path, options = {}) {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
   })
-  if (res.status === 401) {
+  // A 401 on a NORMAL request means the session expired → fire the global
+  // "logged out" so the app re-auths. But a 401 from an /auth/* call IS the auth
+  // attempt itself (e.g. a wrong password on login) — let the caller surface it,
+  // don't blow away the current session and bounce back to the picker.
+  if (res.status === 401 && !path.startsWith('/auth/')) {
     if (typeof window !== 'undefined')
       window.dispatchEvent(new CustomEvent('thrive:unauthorized'))
   }
