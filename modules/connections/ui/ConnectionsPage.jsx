@@ -6,8 +6,8 @@
 // has no personal connections.
 // =============================================================================
 import { useState, useEffect } from 'react'
-import { api } from '@core/api'
-import { useAuth } from '@core/context/AuthContext'
+import { api } from '@trunk/api'
+import { useAuth } from '@trunk/context/AuthContext'
 
 // catalog: maps a provider to the secret fields it needs (3rd item = password input)
 const PROVIDERS = {
