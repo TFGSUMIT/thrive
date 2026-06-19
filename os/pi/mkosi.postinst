@@ -60,6 +60,8 @@ if [ -e "$R/usr/sbin/lightdm" ] || [ -e "$R/usr/bin/lightdm" ]; then
     ln -sf /usr/lib/systemd/system/graphical.target "$R/etc/systemd/system/default.target"
     ln -sf /usr/lib/systemd/system/lightdm.service  "$R/etc/systemd/system/display-manager.service"
     enable_unit lightdm.service graphical.target
+    # the desktop wants a working mouse — drop the kiosk's "ignore all pointers" rule
+    rm -f "$R/etc/udev/rules.d/99-thrive-kiosk-no-pointer.rules"
     echo "[postinst] pi DESKTOP: graphical.target + lightdm"
 else
     # KIOSK edition (default): headless multi-user + the cage/chromium kiosk.
