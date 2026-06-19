@@ -18,6 +18,18 @@
 thrive runs on any Linux box via Docker; thriveOS is the "appliance" path where
 thrive is the entire point of the machine.
 
+> **Naming & layering (canon: [NAMING.md](NAMING.md)).** Two layers:
+> **`thrive-root`** = the portable app (`core/` + `modules/`); **`thriveOS`** = the
+> appliance OS it bakes into (a *contract* — minimal Docker host, boots-to-role,
+> pulls thrive at first boot — with the distro as a swappable **backbone**, today
+> Debian trixie). thriveOS ships in three **editions** = **thrive-sst**:
+> **`thrive-sprout`** (headless), **`thrive-sapling`** (wall), **`thrive-tree`**
+> (desktop). `thrive-root` also ships **bare** (no thriveOS — e.g. on a NAS; the old
+> "service"). NOTE: the `os/` code still says **"sprout"** generically for the
+> appliance image (collides with the *edition* name) — **no renames yet**; "sprout"
+> in `os/` = "the appliance," and today's artifacts map to *sapling*/*tree*, not the
+> headless *sprout* (which has no build yet). Use edition names for **surfaces**.
+
 ## Related projects
 - **The old `thrive` monolith is RETIRED.** It ran at thrive.nerfarrow.com; on
   2026-06-07 it was brought down, backed up (`~/backups/thrive-*.tar.gz`, also in

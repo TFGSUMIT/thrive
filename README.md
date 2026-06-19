@@ -16,3 +16,11 @@ docker compose up -d --build
 ```
 
 Access at http://<host>:9500. See [CLAUDE.md](CLAUDE.md) for architecture details.
+
+## Naming & layering
+
+Two layers — **`thrive-root`** (the portable app: `core/` + `modules/`) baked into
+**`thriveOS`** (the appliance OS, Debian-backed), which ships in three editions —
+**`thrive-sprout`** (headless), **`thrive-sapling`** (wall), **`thrive-tree`**
+(desktop). `thrive-root` can also run **bare** on a host that already has an OS (e.g. a
+NAS). Full canon: [NAMING.md](NAMING.md).
