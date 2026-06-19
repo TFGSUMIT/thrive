@@ -8,8 +8,10 @@
 // know when to show. This component watches focus directly, so it's deterministic.
 //
 // Enable: localStorage `thrive:osk` = 'on' | 'off'; unset → auto (touch screens).
-// Typing goes into the focused field via the native value setter + an 'input'
-// event, so React's onChange fires without touching any existing form.
+// Sized for a wall: keys scale with viewport height and span the full width; when
+// open it adds bottom padding to the page and scrolls the focused field up so the
+// keyboard never covers it. Typing goes in via the native value setter + an 'input'
+// event so React's onChange fires without touching any existing form.
 // =============================================================================
 import { useState, useEffect, useRef } from 'react'
 
@@ -64,12 +66,14 @@ function pressEnter(el) {
     el.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }))
 }
 
+// big, touch-friendly keys that grow with the screen height
 const keyStyle = (flex = 1, accent = false) => ({
-  flex, minWidth: 0, height: 46, margin: 3, borderRadius: 7,
+  flex, minWidth: 0, height: 'clamp(54px, 8.6vh, 92px)', margin: 4, borderRadius: 9,
   background: accent ? 'var(--bg-secondary,#181818)' : 'var(--bg-tertiary,#2a2a2a)',
   border: '1px solid var(--border-color,#333)', color: 'var(--text-primary,#e8e6e0)',
-  fontFamily: 'var(--font-mono,monospace)', fontSize: 16, cursor: 'pointer',
+  fontFamily: 'var(--font-mono,monospace)', fontSize: 'clamp(18px, 3.3vh, 30px)', cursor: 'pointer',
   display: 'flex', alignItems: 'center', justifyContent: 'center', userSelect: 'none',
+  touchAction: 'manipulation',
 })
 
 export default function OnScreenKeyboard() {
@@ -78,6 +82,7 @@ export default function OnScreenKeyboard() {
   const [shift, setShift]     = useState(false)
   const [sym, setSym]         = useState(false)
   const targetRef = useRef(null)
+  const panelRef  = useRef(null)
 
   useEffect(() => {
     const onSetting = () => setEnabled(oskEnabled())
@@ -87,18 +92,29 @@ export default function OnScreenKeyboard() {
 
   useEffect(() => {
     if (!enabled) return
-    const onIn = (e) => {
-      if (isTypable(e.target)) {
-        targetRef.current = e.target; setTarget(e.target)
-        setTimeout(() => e.target.scrollIntoView?.({ block: 'center', behavior: 'smooth' }), 50)
-      }
-    }
+    const onIn  = (e) => { if (isTypable(e.target)) { targetRef.current = e.target; setTarget(e.target) } }
     const onOut = (e) => { if (e.target === targetRef.current) { targetRef.current = null; setTarget(null) } }
     document.addEventListener('focusin', onIn)
     document.addEventListener('focusout', onOut)
     if (isTypable(document.activeElement)) { targetRef.current = document.activeElement; setTarget(document.activeElement) }
     return () => { document.removeEventListener('focusin', onIn); document.removeEventListener('focusout', onOut) }
   }, [enabled])
+
+  // make room for the (tall) keyboard and lift the focused field above it
+  useEffect(() => {
+    if (!target) { document.body.style.paddingBottom = ''; return }
+    const h = panelRef.current ? panelRef.current.offsetHeight : Math.round(window.innerHeight * 0.42)
+    document.body.style.paddingBottom = h + 'px'
+    const id = requestAnimationFrame(() => {
+      const el = targetRef.current; if (!el) return
+      const r = el.getBoundingClientRect()
+      const kbTop = window.innerHeight - h
+      if (r.bottom > kbTop - 16 || r.top < 56) window.scrollBy({ top: r.top - 110, behavior: 'smooth' })
+    })
+    return () => cancelAnimationFrame(id)
+  }, [target])
+
+  useEffect(() => () => { document.body.style.paddingBottom = '' }, [])   // reset on unmount
 
   if (!enabled || !target) return null
 
@@ -114,23 +130,23 @@ export default function OnScreenKeyboard() {
   const rows = sym ? ROWS_SYM : ROWS_LOWER
 
   return (
-    <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 1000,
+    <div ref={panelRef} style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 1000,
       background: 'var(--bg-primary,#0f0f0f)', borderTop: '1px solid var(--border-color,#2a2a2a)',
-      padding: '8px 6px calc(8px + env(safe-area-inset-bottom, 0px))', boxShadow: '0 -8px 24px rgba(0,0,0,.4)' }}
+      padding: '10px 10px calc(10px + env(safe-area-inset-bottom, 0px))', boxShadow: '0 -10px 30px rgba(0,0,0,.5)' }}
       onPointerDown={(e) => e.preventDefault()}>
-      <div style={{ maxWidth: 760, margin: '0 auto' }}>
+      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         {rows.map((row, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'center', padding: i === 1 ? '0 16px' : 0 }}>
-            {i === 2 && !sym && key('⇧', () => setShift(s => !s) || true, { flex: 1.4, accent: true, k: 'shift' })}
+          <div key={i} style={{ display: 'flex', justifyContent: 'center', padding: i === 1 ? '0 5%' : 0 }}>
+            {i === 2 && !sym && key('⇧', () => setShift(s => !s), { flex: 1.5, accent: true, k: 'shift' })}
             {row.map(ch => (sym ? key(ch, (el) => insertText(el, ch), { k: ch }) : letter(ch)))}
-            {i === 2 && key('⌫', backspace, { flex: 1.4, accent: true, k: 'bsp' })}
+            {i === 2 && key('⌫', backspace, { flex: 1.5, accent: true, k: 'bsp' })}
           </div>
         ))}
         <div style={{ display: 'flex', justifyContent: 'center' }}>
-          {key(sym ? 'abc' : '?123', () => setSym(s => !s) || true, { flex: 1.6, accent: true, k: 'sym' })}
+          {key(sym ? 'abc' : '?123', () => setSym(s => !s), { flex: 1.8, accent: true, k: 'sym' })}
           {key('space', (el) => insertText(el, ' '), { flex: 5, k: 'space' })}
-          {key('⏎', pressEnter, { flex: 1.6, accent: true, k: 'enter' })}
-          {key('▾', () => { targetRef.current?.blur(); setTarget(null) }, { flex: 1.2, accent: true, k: 'hide' })}
+          {key('⏎', pressEnter, { flex: 1.8, accent: true, k: 'enter' })}
+          {key('▾', () => { targetRef.current?.blur(); setTarget(null) }, { flex: 1.3, accent: true, k: 'hide' })}
         </div>
       </div>
     </div>
