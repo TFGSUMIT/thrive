@@ -1,0 +1,12 @@
+{
+  "id": "connections",
+  "name": "Connections",
+  "icon": "🔗",
+  "description": "Your external service logins (Steam, GOG, streaming, …) — encrypted, per profile",
+  "version": "0.1.0",
+  "color": "#8b5cf6",
+  "nav_path": "/connections",
+  "api_routers": ["api.routers.connections"],
+  "core": false,
+  "requires": []
+}

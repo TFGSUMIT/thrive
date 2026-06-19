@@ -1,12 +1,16 @@
 # =============================================================================
-# routers/connections.py — per-profile external-service connections (Phase 2)
+# routers/connections.py — Connections module: per-profile external-service logins
 #
-# A core, profile-scoped store for each person's external logins (Steam key, GOG
-# creds, Google/MS OAuth, Plaid items, …). Secrets are encrypted at rest (see
-# crypto.py). The owner only ever manages their OWN connections; the secret blob
-# is write-only over the API (never returned by the list) — modules read the
-# decrypted secret server-side via get_secret(). This generalizes what Calendar
-# (OAuth) and Budget (Plaid/vault) currently hand-roll.
+# A profile-scoped store for each person's external logins (Steam key, GOG creds,
+# Google/MS OAuth, Plaid items, streaming accounts, …). Secrets are encrypted at
+# rest with the shared platform crypto lib (trunk/api/crypto.py). The owner only
+# ever manages their OWN connections; the secret blob is write-only over the API
+# (never returned by the list) — consumer modules read the decrypted secret
+# server-side via crypto.get_secret().
+#
+# This used to live in core; it's now an opt-in module. The encrypt/decrypt +
+# get_secret PRIMITIVE stays in core (shared by any module), but the table, the
+# CRUD, and the UI are this module.
 # =============================================================================
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -67,17 +71,6 @@ def init_db():
         db.close()
 
 init_db()
-
-
-# ── module-facing helper: decrypted secret for a (profile, provider) ──────────
-def get_secret(db, profile_id: int, provider: str) -> Optional[dict]:
-    """The decrypted secret dict for one profile's connection to `provider`, or
-    None. Modules call this server-side; the secret never crosses the API."""
-    row = db.execute(
-        "SELECT secret FROM connections WHERE owner_user_id = ? AND provider = ? ORDER BY id LIMIT 1",
-        (profile_id, provider)
-    ).fetchone()
-    return json.loads(decrypt(row["secret"])) if row else None
 
 
 class ConnIn(BaseModel):

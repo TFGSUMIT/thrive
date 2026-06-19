@@ -20,7 +20,7 @@ import re, time
 import httpx
 
 from routers.auth import get_db, current_profile_id
-from routers.connections import get_secret   # personal-data platform: per-profile Steam login
+from crypto import get_secret   # personal-data platform: per-profile Steam login (Connections module)
 
 router = APIRouter(prefix="/steam", tags=["steam"])
 

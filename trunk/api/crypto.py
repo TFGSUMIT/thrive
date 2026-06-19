@@ -8,7 +8,7 @@
 # Generated once on first use (0600); back it up alongside the appliance, NOT
 # with the database. Uses Fernet (AES-128-CBC + HMAC, authenticated).
 # =============================================================================
-import os
+import os, json
 from pathlib import Path
 from cryptography.fernet import Fernet
 
@@ -43,3 +43,21 @@ def encrypt(plaintext: str) -> str:
 
 def decrypt(token: str) -> str:
     return _f().decrypt(token.encode()).decode()
+
+
+# ── module-facing helper: decrypted secret for a (profile, provider) ──────────
+# Lives here (a shared platform lib) so ANY module can read a profile's stored
+# secret with `from crypto import get_secret`. The Connections *module* owns the
+# `connections` table + the CRUD/UI; the secret-read primitive is platform plumbing.
+def get_secret(db, profile_id, provider):
+    """Decrypted secret dict for one profile's connection to `provider`, or None.
+    Server-side only (the secret never crosses the API). Returns None gracefully
+    when the Connections module isn't installed (the `connections` table is absent)."""
+    try:
+        row = db.execute(
+            "SELECT secret FROM connections WHERE owner_user_id = ? AND provider = ? ORDER BY id LIMIT 1",
+            (profile_id, provider)
+        ).fetchone()
+    except Exception:
+        return None
+    return json.loads(decrypt(row["secret"])) if row else None

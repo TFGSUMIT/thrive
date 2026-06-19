@@ -382,98 +382,6 @@ function AccountsSection() {
   )
 }
 
-// ── My Connections (personal-data platform): each profile's external logins,
-// stored encrypted server-side. A small front-end catalog maps a provider to the
-// secret fields it needs; modules read these via get_secret() on the backend.
-const PROVIDERS = {
-  steam:     { name: 'Steam',     fields: [['api_key', 'API key'], ['steam_id', 'Steam ID']] },
-  gog:       { name: 'GOG',       fields: [['username', 'Username'], ['password', 'Password', true]] },
-  google:    { name: 'Google',    fields: [['token', 'OAuth token', true]] },
-  microsoft: { name: 'Microsoft', fields: [['token', 'OAuth token', true]] },
-  plaid:     { name: 'Plaid',     fields: [['access_token', 'Access token', true]] },
-  other:     { name: 'Other',     fields: [['value', 'Secret', true]] },
-}
-
-function ConnectionsSection() {
-  const [conns, setConns]       = useState([])
-  const [provider, setProvider] = useState('steam')
-  const [label, setLabel]       = useState('')
-  const [secret, setSecret]     = useState({})
-  const [busy, setBusy]         = useState(false)
-  const [err, setErr]           = useState(null)
-  const [shared, setShared]     = useState(false)
-
-  const load = () => api.get('/connections/').then(setConns).catch(() => {})
-  useEffect(() => { load() }, [])
-
-  const fields = (PROVIDERS[provider] || PROVIDERS.other).fields
-  const add = async () => {
-    setBusy(true); setErr(null)
-    try {
-      await api.post('/connections/', { provider, label: label || null, secret, shared })
-      setLabel(''); setSecret({}); setShared(false); load()
-    } catch (e) { setErr(e.message) } finally { setBusy(false) }
-  }
-  const del = async (id) => { try { await api.del(`/connections/${id}`); load() } catch (e) { setErr(e.message) } }
-
-  return (
-    <div style={body}>
-      {conns.length === 0 ? (
-        <div style={{ fontSize: 12, color: 'var(--text-tertiary,#666)', marginBottom: 14, lineHeight: 1.5 }}>
-          No connections yet. Link an external login below — it's stored encrypted, and only you can see or use it.
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
-          {conns.map(c => (
-            <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'var(--bg-tertiary,#222)', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 6 }}>
-              <span style={{ fontSize: 12 }}>
-                <b>{(PROVIDERS[c.provider] || {}).name || c.provider}</b>
-                {c.label && <span style={{ color: 'var(--text-secondary,#aaa)', marginLeft: 8 }}>{c.label}</span>}
-                <span style={{ marginLeft: 8, fontSize: 10, color: c.shared ? '#3b82f6' : 'var(--text-tertiary,#888)' }}>
-                  {c.shared ? '🏠 household' : '🔒 personal'}
-                </span>
-                <span style={{ color: 'var(--color-success,#22c55e)', marginLeft: 6, fontSize: 10 }}>encrypted</span>
-              </span>
-              <button style={{ ...btnS, padding: '3px 9px', borderColor: 'var(--color-danger,#ef4444)', color: 'var(--color-danger,#ef4444)' }} onClick={() => del(c.id)}>✕</button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 10px' }}>
-        <div>
-          <label style={{ ...lbl, display: 'block' }}>Service</label>
-          <select style={inp} value={provider} onChange={e => { setProvider(e.target.value); setSecret({}) }}>
-            {Object.entries(PROVIDERS).map(([id, p]) => <option key={id} value={id}>{p.name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={{ ...lbl, display: 'block' }}>Label (optional)</label>
-          <input style={inp} value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. my account" />
-        </div>
-        {fields.map(([key, flabel, isSecret]) => (
-          <div key={key}>
-            <label style={{ ...lbl, display: 'block' }}>{flabel}</label>
-            <input style={inp} type={isSecret ? 'password' : 'text'} value={secret[key] || ''}
-              onChange={e => setSecret(s => ({ ...s, [key]: e.target.value }))} />
-          </div>
-        ))}
-      </div>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 12, cursor: 'pointer', color: 'var(--text-secondary,#aaa)' }}>
-        <input type="checkbox" checked={shared} onChange={e => setShared(e.target.checked)} />
-        🏠 Shared with the household
-        <span style={{ fontSize: 10, color: 'var(--text-tertiary,#666)' }}>(everyone can see + use it — e.g. a streaming login)</span>
-      </label>
-      {err && <div style={{ fontSize: 11, color: 'var(--color-danger,#ef4444)', marginTop: 8 }}>{err}</div>}
-      <div style={{ marginTop: 12 }}>
-        <button style={{ ...btnP, opacity: busy ? 0.5 : 1 }} onClick={add} disabled={busy}>{busy ? 'Saving…' : '+ Add connection'}</button>
-      </div>
-      <div style={{ fontSize: 10, color: 'var(--text-tertiary,#555)', marginTop: 10, lineHeight: 1.5 }}>
-        Encrypted at rest with a key kept off the database. Personal to this profile.
-      </div>
-    </div>
-  )
-}
 
 export default function SettingsPage() {
   const { user, logout } = useAuth()
@@ -518,13 +426,6 @@ export default function SettingsPage() {
 
       {user?.role === 'admin' && <AccountsSection />}
 
-      {/* My connections — per-profile external logins (encrypted). Only for a
-          profile-bound login; shared/kiosk logins have no personal connections. */}
-      {user?.profile && (
-        <CollapsibleCard title="My connections" defaultOpen={false}>
-          <ConnectionsSection />
-        </CollapsibleCard>
-      )}
 
       <CollapsibleCard title="UI" defaultOpen={false}>
         <UISection />

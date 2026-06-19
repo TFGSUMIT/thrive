@@ -1,2 +1,3 @@
 # steam module backend deps (installed into the API image at build time)
-httpx>=0.27      # Steam Web API calls
+httpx>=0.27         # Steam Web API calls
+cryptography>=42    # crypto.get_secret() reads the profile's encrypted Steam login
