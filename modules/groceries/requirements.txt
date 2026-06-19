@@ -1,0 +1,1 @@
+# Groceries module — no extra backend deps (stdlib sqlite3 + core FastAPI).

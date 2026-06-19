@@ -1,0 +1,12 @@
+{
+  "id": "groceries",
+  "name": "Groceries",
+  "icon": "🛒",
+  "description": "A shared household shopping list",
+  "version": "0.1.0",
+  "color": "#f59e0b",
+  "nav_path": "/groceries",
+  "api_routers": ["api.routers.groceries"],
+  "core": false,
+  "requires": []
+}
