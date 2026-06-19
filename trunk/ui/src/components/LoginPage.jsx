@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 
-const wrap = { minHeight: 'calc(100vh - var(--osk-height, 0px))', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary,#0f0f0f)', padding: 20 }
+const wrap = { minHeight: 'calc(100vh - var(--osk-height, 0px))', transition: 'min-height 0.24s cubic-bezier(.2,.8,.2,1)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary,#0f0f0f)', padding: 20 }
 const card = { width: '100%', maxWidth: 360, background: 'var(--bg-secondary,#181818)', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 12, padding: 28 }
 const lbl  = { fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-tertiary,#666)', display: 'block', marginBottom: 4 }
 const inp  = { fontFamily: 'monospace', fontSize: 14, background: 'var(--bg-tertiary,#222)', border: '1px solid var(--border-color,#333)', borderRadius: 6, color: 'inherit', padding: '9px 12px', outline: 'none', flex: 1, boxSizing: 'border-box', minWidth: 0 }

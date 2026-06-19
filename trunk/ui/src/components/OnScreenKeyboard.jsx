@@ -132,7 +132,8 @@ export default function OnScreenKeyboard() {
     document.documentElement.style.setProperty('--osk-height', '0px')
   }, [])
 
-  if (!enabled || !target) return null
+  if (!enabled) return null
+  const visible = !!target           // hidden = still mounted, slid off-screen (animates)
 
   // keys keep the field focused by preventing the default focus-steal on press
   const press = (fn) => (e) => { e.preventDefault(); const el = targetRef.current; if (el) fn(el) }
@@ -148,7 +149,10 @@ export default function OnScreenKeyboard() {
   return (
     <div ref={panelRef} style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 1000,
       background: 'var(--bg-primary,#0f0f0f)', borderTop: '1px solid var(--border-color,#2a2a2a)',
-      padding: '10px 10px calc(10px + env(safe-area-inset-bottom, 0px))', boxShadow: '0 -10px 30px rgba(0,0,0,.5)' }}
+      padding: '10px 10px calc(10px + env(safe-area-inset-bottom, 0px))', boxShadow: '0 -10px 30px rgba(0,0,0,.5)',
+      transform: visible ? 'translateY(0)' : 'translateY(110%)',
+      transition: 'transform 0.24s cubic-bezier(.2,.8,.2,1)',
+      pointerEvents: visible ? 'auto' : 'none', willChange: 'transform' }}
       onPointerDown={(e) => e.preventDefault()}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         {rows.map((row, i) => (

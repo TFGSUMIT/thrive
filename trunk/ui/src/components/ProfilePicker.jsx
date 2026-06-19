@@ -8,7 +8,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../api'
 
-const overlay = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 'var(--osk-height, 0px)', zIndex: 400, background: 'var(--bg-primary,#0f0f0f)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }
+const overlay = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 'var(--osk-height, 0px)', transition: 'bottom 0.24s cubic-bezier(.2,.8,.2,1)', zIndex: 400, background: 'var(--bg-primary,#0f0f0f)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }
 const inp = { fontFamily: 'monospace', fontSize: 14, background: 'var(--bg-tertiary,#222)', border: '1px solid var(--border-color,#333)', borderRadius: 6, color: 'inherit', padding: '9px 12px', outline: 'none', width: '100%', boxSizing: 'border-box', marginBottom: 12 }
 const btn = { width: '100%', padding: 11, fontFamily: 'monospace', fontSize: 12, letterSpacing: '0.12em', textTransform: 'uppercase', background: 'var(--text-primary,#e8e6e0)', border: 'none', borderRadius: 6, color: 'var(--bg-primary,#0f0f0f)', fontWeight: 600, cursor: 'pointer' }
 const ghost = { ...btn, marginTop: 8, background: 'none', border: '1px solid var(--border-color,#333)', color: 'var(--text-secondary,#aaa)' }
