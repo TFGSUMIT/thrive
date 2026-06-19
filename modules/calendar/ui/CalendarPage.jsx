@@ -18,6 +18,23 @@ import { getWeekStart, PREFS_EVENT } from './prefs'
 
 const ACCENT = '#f97316'   // module color
 
+// a colour per month — orients you as you scroll the stack (full hue spread so
+// adjacent months read distinctly; roughly seasonal)
+const MONTH_COLORS = [
+  '#3b82f6', // Jan
+  '#8b5cf6', // Feb
+  '#ec4899', // Mar
+  '#22c55e', // Apr
+  '#84cc16', // May
+  '#eab308', // Jun
+  '#f97316', // Jul
+  '#ef4444', // Aug
+  '#f59e0b', // Sep
+  '#14b8a6', // Oct
+  '#a855f7', // Nov
+  '#06b6d4', // Dec
+]
+
 const DOW_MON = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const DOW_SUN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const dowLabels = (ws) => (ws === 'sun' ? DOW_SUN : DOW_MON)
@@ -249,7 +266,7 @@ export default function CalendarPage() {
       {/* ── slim top bar (label tracks the visible month) ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 16px', borderBottom: '1px solid var(--border-color,#2a2a2a)', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-          <span style={{ fontSize: 22, fontWeight: 600, letterSpacing: '0.04em' }}>{MONTHS[label.m]}</span>
+          <span style={{ fontSize: 22, fontWeight: 700, letterSpacing: '0.04em', color: MONTH_COLORS[label.m] }}>{MONTHS[label.m]}</span>
           <span style={{ fontSize: 18, color: 'var(--text-tertiary,#888)', fontFamily: 'monospace' }}>{label.y}</span>
           {loading && <span style={{ fontSize: 10, color: 'var(--text-tertiary,#666)' }}>syncing…</span>}
         </div>
@@ -295,12 +312,13 @@ export default function CalendarPage() {
         {DOW.map(d => <div key={d} style={{ padding: '8px 0', textAlign: 'center', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--text-tertiary,#666)' }}>{d}</div>)}
       </div>
 
-      {/* ── scrollable stack of month grids ── */}
-      <div ref={scrollRef} onScroll={onScroll} style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+      {/* ── scrollable stack of month grids (scrollbar hidden — it's a touch wall) ── */}
+      <style>{`.cal-scroll::-webkit-scrollbar{display:none}.cal-scroll{scrollbar-width:none;-ms-overflow-style:none}`}</style>
+      <div ref={scrollRef} onScroll={onScroll} className="cal-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {months.map(({ y, m }) => (
           <div key={`${y}-${m}`} data-month={`${y}-${m}`}>
-            <div style={{ position: 'sticky', top: 0, zIndex: 5, padding: '6px 16px', background: 'var(--bg-primary,#0f0f0f)', borderBottom: '1px solid var(--border-color,#2a2a2a)', fontSize: 13, fontWeight: 600, letterSpacing: '0.04em', color: 'var(--text-secondary,#aaa)' }}>
-              {MONTHS[m]} <span style={{ color: 'var(--text-tertiary,#666)', fontFamily: 'monospace' }}>{y}</span>
+            <div style={{ position: 'sticky', top: 0, zIndex: 5, padding: '6px 16px', background: `${MONTH_COLORS[m]}14`, borderBottom: '1px solid var(--border-color,#2a2a2a)', borderLeft: `3px solid ${MONTH_COLORS[m]}`, fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', color: MONTH_COLORS[m] }}>
+              {MONTHS[m]} <span style={{ color: 'var(--text-tertiary,#888)', fontFamily: 'monospace' }}>{y}</span>
             </div>
             <div style={COL7}>
               {monthCells(y, m, weekStart).map((d, i) => {
@@ -312,8 +330,8 @@ export default function CalendarPage() {
                   <div key={i} onClick={() => writable.length && openNew(k)}
                     style={{ minHeight: 'clamp(74px, 11vh, 120px)', minWidth: 0, overflow: 'hidden', padding: 5, cursor: writable.length ? 'pointer' : 'default', boxSizing: 'border-box',
                       borderTop: i >= 7 ? '1px solid var(--border-color,#2a2a2a)' : 'none', borderLeft: i % 7 ? '1px solid var(--border-color,#2a2a2a)' : 'none',
-                      background: isToday ? 'rgba(249,115,22,0.08)' : 'none' }}>
-                    <div style={{ fontSize: 13, fontFamily: 'monospace', padding: '1px 4px', marginBottom: 3, color: isToday ? ACCENT : 'var(--text-tertiary,#888)', fontWeight: isToday ? 700 : 400 }}>{d.getDate()}</div>
+                      background: isToday ? `${MONTH_COLORS[m]}1f` : 'none' }}>
+                    <div style={{ fontSize: 13, fontFamily: 'monospace', padding: '1px 4px', marginBottom: 3, color: isToday ? MONTH_COLORS[m] : 'var(--text-tertiary,#888)', fontWeight: isToday ? 700 : 400 }}>{d.getDate()}</div>
                     {dayEvents.slice(0, 5).map(ev => (
                       <div key={`${ev.calendar_id}:${ev.id}:${k}`} onClick={e => { e.stopPropagation(); ev.source === 'budget' ? navigate('/budget') : openEdit(ev) }}
                         title={`${ev.title}${ev.all_day ? '' : ` · ${fmtTime(ev.start)}`}`}
