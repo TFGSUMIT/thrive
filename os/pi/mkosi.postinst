@@ -60,13 +60,28 @@ if [ -e "$R/usr/sbin/lightdm" ] || [ -e "$R/usr/bin/lightdm" ]; then
     ln -sf /usr/lib/systemd/system/graphical.target "$R/etc/systemd/system/default.target"
     ln -sf /usr/lib/systemd/system/lightdm.service  "$R/etc/systemd/system/display-manager.service"
     enable_unit lightdm.service graphical.target
-    # the desktop wants a working mouse — drop the kiosk's "ignore all pointers" rule
-    rm -f "$R/etc/udev/rules.d/99-thrive-kiosk-no-pointer.rules"
     echo "[postinst] pi DESKTOP: graphical.target + lightdm"
 else
     # KIOSK edition (default): headless multi-user + the cage/chromium kiosk.
     enable_unit sprout-kiosk.service # Pi-on-a-TV → fullscreen thrive UI; self-gates on
                                      # the `splash` cmdline (only runs in the `user` image)
     ln -sf /usr/lib/systemd/system/multi-user.target "$R/etc/systemd/system/default.target"
-    echo "[postinst] pi KIOSK: multi-user.target + sprout-kiosk"
+    # blank Xcursor theme (transparent at 24/32/48/64) so cage's centre cursor is
+    # invisible on the touch wall — paired with XCURSOR_THEME=blank in sprout-kiosk.service.
+    mkdir -p "$R/usr/share/icons/blank/cursors" "$R/usr/share/icons/default"
+    python3 - "$R/usr/share/icons/blank/cursors/left_ptr" <<'PY'
+import struct, sys
+le = lambda v: struct.pack('<I', v)
+sizes = [24, 32, 48, 64]
+imgs = [(s, le(36)+le(0xfffd0002)+le(s)+le(1)+le(s)+le(s)+le(s//2)+le(s//2)+le(0)+b'\x00'*(s*s*4)) for s in sizes]
+hdr = b'Xcur' + le(16) + le(0x10000) + le(len(imgs))
+pos = 16 + len(imgs)*12; positions = []
+for s, img in imgs: positions.append(pos); pos += len(img)
+toc = b''.join(le(0xfffd0002)+le(s)+le(p) for (s, img), p in zip(imgs, positions))
+open(sys.argv[1], 'wb').write(hdr + toc + b''.join(i for _, i in imgs))
+PY
+    for n in default arrow top_left_arrow xterm hand1 hand2 pointer watch text crosshair fleur; do ln -sf left_ptr "$R/usr/share/icons/blank/cursors/$n"; done
+    printf '[Icon Theme]\nName=blank\n' > "$R/usr/share/icons/blank/index.theme"
+    printf '[Icon Theme]\nName=Default\nInherits=blank\n' > "$R/usr/share/icons/default/index.theme"
+    echo "[postinst] pi KIOSK: multi-user.target + sprout-kiosk + blank cursor"
 fi

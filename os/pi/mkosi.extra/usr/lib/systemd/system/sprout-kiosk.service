@@ -18,6 +18,13 @@ User=thrive
 # Pi 5 splits the GPU: card0=v3d (render-only), card1=vc4 (display). Point wlroots
 # at the display card, else cage finds no outputs and exits (black screen / loop).
 Environment=WLR_DRM_DEVICES=/dev/dri/card1
+# cage draws a cursor at screen-centre regardless of any pointer; the only way to
+# hide it on a touch wall is a blank Xcursor theme (built in mkosi.postinst, kiosk
+# only). Force the software cursor so the theme actually takes effect.
+Environment=XCURSOR_THEME=blank
+Environment=XCURSOR_SIZE=24
+Environment=XCURSOR_PATH=/usr/share/icons:/usr/share/pixmaps
+Environment=WLR_NO_HARDWARE_CURSORS=1
 PAMName=login
 TTYPath=/dev/tty1
 TTYReset=yes

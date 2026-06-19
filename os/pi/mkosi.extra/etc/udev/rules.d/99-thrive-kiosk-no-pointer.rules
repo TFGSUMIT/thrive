@@ -1,6 +1,0 @@
-# Touch kiosk: ignore ALL pointer devices so cage never draws a cursor — the
-# touchscreen's redundant mouse interface, a USB keyboard's mouse interface, or
-# any attached mouse. A wall has no use for a pointer; touch is the input.
-# Touch (ID_INPUT_TOUCHSCREEN) and keyboard typing (ID_INPUT_KEYBOARD) are
-# unaffected. The DESKTOP edition removes this file in mkosi.postinst.
-SUBSYSTEM=="input", ENV{ID_INPUT_MOUSE}=="1", ENV{LIBINPUT_IGNORE_DEVICE}="1"
