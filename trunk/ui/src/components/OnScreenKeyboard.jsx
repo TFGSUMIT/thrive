@@ -74,13 +74,21 @@ const keyStyle = (flex = 1, accent = false) => ({
   fontFamily: 'var(--font-mono,monospace)', fontSize: 'clamp(18px, 3.3vh, 30px)', cursor: 'pointer',
   display: 'flex', alignItems: 'center', justifyContent: 'center', userSelect: 'none',
   touchAction: 'manipulation',
+  transition: 'background .07s, color .07s, transform .07s, box-shadow .07s',
 })
+// a tapped key lights up: inverts to a bright key + a soft glow, briefly
+const PRESSED = {
+  background: 'var(--text-primary,#e8e6e0)', color: 'var(--bg-primary,#0f0f0f)',
+  borderColor: 'var(--text-primary,#e8e6e0)', transform: 'scale(0.95)',
+  boxShadow: '0 0 14px rgba(232,230,224,.45)',
+}
 
 export default function OnScreenKeyboard() {
   const [enabled, setEnabled] = useState(oskEnabled)
   const [target, setTarget]   = useState(null)
   const [shift, setShift]     = useState(false)
   const [sym, setSym]         = useState(false)
+  const [pressed, setPressed] = useState(null)   // key currently lit on tap
   const targetRef = useRef(null)
   const panelRef  = useRef(null)
   const hideTimer = useRef(null)
@@ -135,11 +143,19 @@ export default function OnScreenKeyboard() {
   if (!enabled) return null
   const visible = !!target           // hidden = still mounted, slid off-screen (animates)
 
-  // keys keep the field focused by preventing the default focus-steal on press
-  const press = (fn) => (e) => { e.preventDefault(); const el = targetRef.current; if (el) fn(el) }
-  const key = (label, fn, opts = {}) => (
-    <button key={label + (opts.k || '')} style={keyStyle(opts.flex, opts.accent)} onPointerDown={press(fn)}>{label}</button>
-  )
+  // keys keep the field focused by preventing the default focus-steal on press, and
+  // light up for ~130ms so a tap is visibly registered on a touch screen
+  const flash = (id) => { setPressed(id); setTimeout(() => setPressed(p => (p === id ? null : p)), 130) }
+  const key = (label, fn, opts = {}) => {
+    const id = label + (opts.k || '')
+    return (
+      <button key={id}
+        style={{ ...keyStyle(opts.flex, opts.accent), ...(pressed === id ? PRESSED : null) }}
+        onPointerDown={(e) => { e.preventDefault(); flash(id); const el = targetRef.current; if (el) fn(el) }}>
+        {label}
+      </button>
+    )
+  }
   const letter = (ch) => key(shift ? ch.toUpperCase() : ch, (el) => {
     insertText(el, shift ? ch.toUpperCase() : ch); if (shift) setShift(false)
   }, { k: ch })
