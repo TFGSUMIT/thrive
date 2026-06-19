@@ -14,12 +14,13 @@
 #   • owns `steam_config` (key/value) and `steam_links` (user_id → steamid)
 #   • reads the core `users` table (profiles) for the link roster
 # =============================================================================
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 import re, time
 import httpx
 
-from routers.auth import get_db
+from routers.auth import get_db, current_profile_id
+from routers.connections import get_secret   # personal-data platform: per-profile Steam login
 
 router = APIRouter(prefix="/steam", tags=["steam"])
 
@@ -235,14 +236,11 @@ def _link_for(user_id: int):
     return row["steamid"]
 
 
-@router.get("/library/{user_id}")
-async def library(user_id: int):
-    """The dashboard payload for one linked profile: live presence, the owned
+async def _fetch_library(key: str, sid: str):
+    """Fetch + shape one Steam account's dashboard payload: live presence, owned
     library with playtime, and the last-2-weeks recently-played list. A private
-    profile returns empty games and `private: true` so the UI can say why."""
-    key = require_key()
-    sid = _link_for(user_id)
-
+    profile comes back with empty games and `private: true`. Shared by
+    /library/{user_id} (steam_links) and /my-library (personal connection)."""
     sm     = await steam_get("/ISteamUser/GetPlayerSummaries/v2/", {"key": key, "steamids": sid}, ttl=60)
     owned  = await steam_get("/IPlayerService/GetOwnedGames/v1/",
                              {"key": key, "steamid": sid, "include_appinfo": 1, "include_played_free_games": 1})
@@ -272,6 +270,37 @@ async def library(user_id: int):
             "icon":     g.get("img_icon_url") or None,
         } for g in recent.get("response", {}).get("games", [])],
     }
+
+
+@router.get("/library/{user_id}")
+async def library(user_id: int):
+    """The dashboard payload for one linked profile (steam_links)."""
+    return await _fetch_library(require_key(), _link_for(user_id))
+
+
+@router.get("/my-library")
+async def my_library(request: Request):
+    """The SIGNED-IN profile's Steam library, identified by their personal Steam
+    CONNECTION (Settings → Connections) rather than steam_links — the personal-data
+    platform adopter. The encrypted secret holds {steam_id, api_key?}; the key
+    falls back to the shared household key (Settings → Steam) when not carried on
+    the connection. So each person sees THEIR library from THEIR own linked login."""
+    me = current_profile_id(request)
+    if me is None:
+        raise HTTPException(status_code=400, detail="Sign in with a profile")
+    conn = get_db()
+    try:
+        secret = get_secret(conn, me, "steam")
+    finally:
+        conn.close()
+    if not secret or not secret.get("steam_id"):
+        raise HTTPException(status_code=404, detail="No Steam connection — add one in Settings → Connections")
+    key = secret.get("api_key") or get_cfg("api_key")
+    if not key:
+        raise HTTPException(status_code=400, detail="No Steam API key — add it to your connection or in Settings → Steam")
+    data = await _fetch_library(key, str(secret["steam_id"]).strip())
+    data["source"] = "connection"
+    return data
 
 
 @router.get("/overview")
