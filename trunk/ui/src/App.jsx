@@ -2,7 +2,7 @@
 // App.jsx — thrive shell
 // Minimal: auth gate, top nav, landing, settings
 // =============================================================================
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ToastProvider }   from './context/ToastContext'
@@ -10,6 +10,8 @@ import { ConfirmProvider } from './context/ConfirmModal'
 import { VaultProvider }   from './context/VaultContext'
 import { api } from './api'
 import LoginPage   from './components/LoginPage'
+import OnboardingScreen from './components/OnboardingScreen'
+import ProfilePicker    from './components/ProfilePicker'
 import LandingPage from './pages/LandingPage'
 import SettingsPage from './pages/SettingsPage'
 import { MODULES } from './moduleRegistry'
@@ -23,7 +25,7 @@ import { MODULES } from './moduleRegistry'
 const NAV_ORDER_KEY = 'thrive:navOrder'
 const loadNavOrder = () => { try { return JSON.parse(localStorage.getItem(NAV_ORDER_KEY)) || [] } catch { return [] } }
 
-function TopNav() {
+function TopNav({ onOpenPicker }) {
   const { user, logout } = useAuth()
   const navigate  = useNavigate()
   const location  = useLocation()
@@ -112,6 +114,14 @@ function TopNav() {
       })}
 
       <div style={{ flex: 1 }} />
+
+      {/* identity switcher — current user (Household or a person); opens the picker */}
+      <button onClick={onOpenPicker} title="Switch profile"
+        style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 8, padding: '5px 10px', marginRight: 6, cursor: 'pointer', color: 'var(--text-secondary,#aaa)', fontFamily: 'var(--font-mono,monospace)', fontSize: 11 }}>
+        <span style={{ fontSize: 13 }}>{user.role === 'household' ? '🏠' : (user.profile?.avatar || '👤')}</span>
+        <span>{user.role === 'household' ? 'Household' : (user.profile?.name || user.username)}</span>
+      </button>
+
       <button onClick={() => navigate('/settings')} title="Settings"
         style={iconBtn('settings')}
         onMouseEnter={() => setHov('settings')}
@@ -239,6 +249,7 @@ function Shell() {
   // nav included — leaving just its own canvas, so F11 gives a clean fullscreen.
   // The page owns the toggle and the way back out (Esc); it fires this event.
   const [immersive, setImmersive] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
   useEffect(() => {
     const onImmersive = (e) => setImmersive(!!e.detail)
     window.addEventListener('thrive:immersive', onImmersive)
@@ -247,10 +258,11 @@ function Shell() {
   return (
     <>
       <AmbientBackground />
-      {!immersive && <TopNav />}
+      {!immersive && <TopNav onOpenPicker={() => setPickerOpen(true)} />}
       {/* module HUD overlays (e.g. the FPS module) — painted on top, even in
           immersive so they can read frame-rate over a full-screen renderer */}
       <ModuleOverlays />
+      {pickerOpen && <ProfilePicker onClose={() => setPickerOpen(false)} />}
       <main style={{ marginTop: immersive ? 0 : 48, minHeight: immersive ? '100vh' : 'calc(100vh - 48px)' }}>
         <Routes>
           <Route path="/"         element={<RootRoute />} />
@@ -269,14 +281,54 @@ function Shell() {
 }
 
 // ── gate ──────────────────────────────────────────────────────────────────────
-function Gate() {
-  const { user, loading } = useAuth()
-  if (loading) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary,#888)', fontFamily: 'monospace', fontSize: 13 }}>
-      Loading…
+const GateLoading = () => (
+  <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary,#888)', fontFamily: 'monospace', fontSize: 13 }}>
+    Loading…
+  </div>
+)
+
+// Phase-1 Client placeholder: a box configured as a Client of a Host. Full client
+// mode (a local shell proxied to the Host) is Phase 2; for now, offer the Host link.
+function ClientStub({ hostUrl }) {
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, background: 'var(--bg-primary,#0f0f0f)', fontFamily: 'monospace', color: 'var(--text-secondary,#aaa)', padding: 24, textAlign: 'center' }}>
+      <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-primary,#e8e6e0)' }}>thrive</div>
+      <div style={{ fontSize: 13 }}>Client of <span style={{ color: 'var(--text-primary,#e8e6e0)' }}>{hostUrl || '—'}</span></div>
+      <div style={{ fontSize: 11, color: 'var(--text-tertiary,#666)', maxWidth: 320, lineHeight: 1.6 }}>
+        Full client mode (a local shell proxied to the Host) is coming. For now, open the Host directly.
+      </div>
+      <button onClick={() => hostUrl && (window.location.href = hostUrl)}
+        style={{ padding: '10px 20px', fontFamily: 'monospace', fontSize: 12, letterSpacing: '0.12em', textTransform: 'uppercase', background: 'var(--text-primary,#e8e6e0)', border: 'none', borderRadius: 6, color: 'var(--bg-primary,#0f0f0f)', fontWeight: 600, cursor: 'pointer' }}>
+        Open Host
+      </button>
     </div>
   )
-  if (!user) return <LoginPage />
+}
+
+function Gate() {
+  const { user, loading, setupNeeded, role, hostUrl, enterHousehold } = useAuth()
+  const triedHousehold = useRef(false)
+  const [householdFailed, setHouseholdFailed] = useState(false)
+
+  const needsSetup    = setupNeeded && role === 'unset'
+  const wantHousehold = !loading && !user && !needsSetup && role !== 'client'
+
+  // Kiosk: with no session (and past first-boot setup) auto-enter the shared
+  // Household view instead of showing a login. Re-armed once a real user logs in,
+  // so a later logout drops back to Household. LoginPage is the fallback if a
+  // Household session can't be minted (e.g. backend unreachable).
+  useEffect(() => {
+    if (wantHousehold && !triedHousehold.current) {
+      triedHousehold.current = true
+      enterHousehold().catch(() => setHouseholdFailed(true))
+    }
+    if (user) { triedHousehold.current = false; setHouseholdFailed(false) }
+  }, [wantHousehold, user, enterHousehold])
+
+  if (loading) return <GateLoading />
+  if (needsSetup) return <OnboardingScreen />
+  if (role === 'client' && !user) return <ClientStub hostUrl={hostUrl} />
+  if (!user) return householdFailed ? <LoginPage /> : <GateLoading />
   return <Shell />
 }
 

@@ -16,7 +16,8 @@ COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").lower() != "false"
 SESSION_DAYS  = int(os.environ.get("SESSION_DAYS", "30"))
 PBKDF2_ITERS  = 200_000
 
-PUBLIC_PATHS = {"/health", "/auth/status", "/auth/login", "/auth/logout", "/auth/register"}
+PUBLIC_PATHS = {"/health", "/auth/status", "/auth/login", "/auth/logout", "/auth/register",
+                "/auth/household", "/auth/client-config"}
 
 
 # ── db ─────────────────────────────────────────────────────────────────────
@@ -28,6 +29,20 @@ def get_db():
 
 def _table_cols(conn, table: str) -> list[str]:
     return [r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+
+def get_config(conn, key: str, default=None):
+    """Read a platform_config value (appliance role state). Safe before init on a
+    brand-new DB (the table is created in init_db, called at import)."""
+    try:
+        row = conn.execute("SELECT value FROM platform_config WHERE key=?", (key,)).fetchone()
+    except sqlite3.OperationalError:
+        return default
+    return row["value"] if row else default
+
+def set_config(conn, key: str, value: str):
+    conn.execute(
+        "INSERT INTO platform_config (key, value) VALUES (?,?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(value)))
 
 def _migrate_legacy_split(conn):
     """One-time split of the old single `users` (credentials+identity) table into
@@ -92,12 +107,25 @@ def init_db():
                 created_at TEXT DEFAULT (datetime('now'))
             )
         """)
+        # sessions.account_id is NULLABLE — a NULL account_id is a "household" guest
+        # session (kiosk shared view, no login). Older DBs created it NOT NULL; since
+        # sessions are ephemeral, drop+recreate to relax the constraint.
+        sess = conn.execute("PRAGMA table_info(sessions)").fetchall()
+        if any(c["name"] == "account_id" and c["notnull"] == 1 for c in sess):
+            conn.execute("DROP TABLE sessions")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
                 token      TEXT PRIMARY KEY,
-                account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,  -- NULL = household
                 created_at TEXT DEFAULT (datetime('now')),
                 expires_at TEXT NOT NULL
+            )
+        """)
+        # platform_config — tiny key/value for appliance role state (role, host_url).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS platform_config (
+                key   TEXT PRIMARY KEY,
+                value TEXT
             )
         """)
         # per-user UI preferences (theme, …) — a JSON blob on the account so they
@@ -146,21 +174,32 @@ def _account_payload(row) -> dict:
     return {"id": row["id"], "username": row["username"], "email": row["email"],
             "role": row["role"], "profile": profile, "prefs": prefs}
 
+def _household_payload() -> dict:
+    """The no-login shared 'Household' identity (a session with NULL account_id):
+    sees only household/shared data (profile None → household scope) and fails admin
+    checks (role != 'admin')."""
+    return {"id": None, "username": "household", "email": None,
+            "role": "household", "profile": None, "prefs": {}}
+
 def user_from_token(token: Optional[str]) -> Optional[dict]:
     if not token: return None
     conn = get_db()
     try:
+        s = conn.execute("SELECT account_id, expires_at FROM sessions WHERE token=?",
+                         (token,)).fetchone()
+        if not s: return None
+        if s["expires_at"] < datetime.utcnow().isoformat():
+            conn.execute("DELETE FROM sessions WHERE token=?", (token,)); conn.commit(); return None
+        if s["account_id"] is None:
+            return _household_payload()                 # household guest session
         row = conn.execute(
-            """SELECT s.expires_at, a.id, a.username, a.email, a.role, a.disabled, a.prefs,
+            """SELECT a.id, a.username, a.email, a.role, a.disabled, a.prefs,
                       u.id AS profile_id, u.name AS profile_name,
                       u.avatar AS profile_avatar, u.color AS profile_color
-               FROM sessions s JOIN accounts a ON a.id = s.account_id
-               LEFT JOIN users u ON u.id = a.user_id WHERE s.token = ?""",
-            (token,)
+               FROM accounts a LEFT JOIN users u ON u.id = a.user_id WHERE a.id = ?""",
+            (s["account_id"],)
         ).fetchone()
         if not row or row["disabled"]: return None
-        if row["expires_at"] < datetime.utcnow().isoformat():
-            conn.execute("DELETE FROM sessions WHERE token=?", (token,)); conn.commit(); return None
         return _account_payload(row)
     finally:
         conn.close()
@@ -222,6 +261,11 @@ class LoginBody(BaseModel):
     username: str
     password: str
 
+class ClientConfigBody(BaseModel):
+    host_url: str
+    username: Optional[str] = None
+    password: Optional[str] = None
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 def _count_accounts(conn) -> int:
     return conn.execute("SELECT COUNT(*) AS n FROM accounts").fetchone()["n"]
@@ -230,8 +274,13 @@ def _count_accounts(conn) -> int:
 # ── public routes ─────────────────────────────────────────────────────────────
 @router.get("/status")
 def status():
+    """Public onboarding state: whether an owner exists, and the appliance role
+    (`unset` until the Host/Client setup screen is completed)."""
     conn = get_db()
-    try: return {"setup_needed": _count_accounts(conn) == 0}
+    try:
+        return {"setup_needed": _count_accounts(conn) == 0,
+                "role":     get_config(conn, "role", "unset"),
+                "host_url": get_config(conn, "host_url", "")}
     finally: conn.close()
 
 @router.post("/register", status_code=201)
@@ -252,6 +301,7 @@ def register(body: RegisterBody, response: Response):
             "INSERT INTO accounts (username, email, password_hash, role, user_id) VALUES (?,?,?,'admin',?)",
             (body.username, body.email, hash_password(body.password), profile.lastrowid)
         )
+        set_config(conn, "role", "host")   # completing owner setup makes this box the Host
         conn.commit()
         token = create_session(conn, acct.lastrowid); conn.commit()
         _set_cookie(response, token)
@@ -271,6 +321,38 @@ def login(body: LoginBody, response: Response):
         token = create_session(conn, row["id"]); conn.commit()
         _set_cookie(response, token)
         return user_from_token(token)
+    finally:
+        conn.close()
+
+@router.post("/household")
+def enter_household(response: Response):
+    """Mint a no-login 'Household' session (the kiosk shared view). Anyone reaching the
+    box may enter it; it sees household/shared data only and can't do admin."""
+    conn = get_db()
+    try:
+        token   = secrets.token_urlsafe(32)
+        expires = (datetime.utcnow() + timedelta(days=SESSION_DAYS)).isoformat()
+        conn.execute("INSERT INTO sessions (token, account_id, expires_at) VALUES (?, NULL, ?)",
+                     (token, expires))
+        conn.commit()
+        _set_cookie(response, token)
+        return user_from_token(token)
+    finally:
+        conn.close()
+
+@router.post("/client-config")
+def client_config(body: ClientConfigBody):
+    """Setup screen → Client: record that this box is a Client of `host_url`. Phase 1
+    persists the role + host (the Phase-2 proxy client consumes it); credentials in the
+    body are accepted for forward-compat but not stored here."""
+    if not body.host_url:
+        raise HTTPException(status_code=400, detail="Host URL required")
+    conn = get_db()
+    try:
+        set_config(conn, "role", "client")
+        set_config(conn, "host_url", body.host_url)
+        conn.commit()
+        return {"role": "client", "host_url": body.host_url}
     finally:
         conn.close()
 

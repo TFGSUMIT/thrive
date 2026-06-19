@@ -9,10 +9,18 @@ export function AuthProvider({ children }) {
   const [user,        setUser]        = useState(null)
   const [loading,     setLoading]     = useState(true)
   const [setupNeeded, setSetupNeeded] = useState(false)
+  const [role,        setRole]        = useState('unset')   // appliance role: unset|host|client
+  const [hostUrl,     setHostUrl]     = useState('')        // client mode: the Host URL
 
   const refresh = useCallback(async () => {
     try { const me = await api.get('/auth/me'); setUser(me) }
-    catch { setUser(null); try { const s = await api.get('/auth/status'); setSetupNeeded(!!s.setup_needed) } catch {} }
+    catch {
+      setUser(null)
+      try {
+        const s = await api.get('/auth/status')
+        setSetupNeeded(!!s.setup_needed); setRole(s.role || 'unset'); setHostUrl(s.host_url || '')
+      } catch {}
+    }
     finally { setLoading(false) }
   }, [])
 
@@ -31,8 +39,16 @@ export function AuthProvider({ children }) {
   }, [user, loading])
 
   const login    = async (u, p) => { const r = await api.post('/auth/login',   { username: u, password: p }); setUser(r); return r }
-  const register = async (data) => { const r = await api.post('/auth/register', data); setSetupNeeded(false); setUser(r); return r }
+  const register = async (data) => { const r = await api.post('/auth/register', data); setSetupNeeded(false); setRole('host'); setUser(r); return r }
   const logout   = async ()     => { try { await api.post('/auth/logout') } catch {}; setUser(null) }
+
+  // kiosk: enter the no-login shared Household view (a session with no account)
+  const enterHousehold  = async () => { const r = await api.post('/auth/household'); setUser(r); return r }
+  // setup screen → Client: record this box as a client of `host_url`
+  const configureClient = async (host_url, creds = {}) => {
+    const r = await api.post('/auth/client-config', { host_url, ...creds })
+    setRole('client'); setHostUrl(r.host_url); return r
+  }
 
   // self-serve per-user UI prefs (theme, …): persist server-side, merge locally so
   // the theme effect re-applies instantly
@@ -43,7 +59,9 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, loading, setupNeeded, login, register, logout, refresh, updatePrefs }}>
+    <AuthContext.Provider value={{ user, loading, setupNeeded, role, hostUrl,
+                                   login, register, logout, enterHousehold, configureClient,
+                                   refresh, updatePrefs }}>
       {children}
     </AuthContext.Provider>
   )
