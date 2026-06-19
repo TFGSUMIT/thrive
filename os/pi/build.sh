@@ -19,6 +19,13 @@ BOOT_MB=512
 # console (kernel/systemd text). Same image either way; only cmdline.txt differs.
 PROFILE="${PROFILE:-user}"
 echo "[pi-build] profile: $PROFILE"
+# EDITION=kiosk (default) → the cage/chromium wall; EDITION=desktop → XFCE/LightDM,
+# which selects the `desktop` mkosi profile (mkosi.profiles/desktop.conf adds the DE).
+# Orthogonal to PROFILE (which only controls boot verbosity / plymouth splash).
+EDITION="${EDITION:-kiosk}"
+echo "[pi-build] edition: $EDITION"
+PROFILE_ARG=()
+[ "$EDITION" = desktop ] && PROFILE_ARG=(--profile desktop)
 
 # ── 1. binfmt for arm64 emulation ────────────────────────────────────────────
 # trixie's qemu-user-static ships systemd-binfmt configs (/usr/lib/binfmt.d/*.conf),
@@ -42,7 +49,7 @@ echo "[pi-build] qemu-aarch64 binfmt ready"
 if [ "${SKIP_MKOSI:-0}" = 1 ]; then
     echo "[pi-build] SKIP_MKOSI=1 — reusing existing $ROOTFS"
 else
-    mkosi --package-cache-directory=/work/mkosi.cache --force build
+    mkosi "${PROFILE_ARG[@]}" --package-cache-directory=/work/mkosi.cache --force build
 fi
 [ -d "$ROOTFS" ] || { echo "FATAL: rootfs '$ROOTFS' missing — check mkosi OutputDirectory"; exit 1; }
 

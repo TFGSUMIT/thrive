@@ -26,9 +26,8 @@ enable_unit docker.service     # container engine
 enable_unit ssh.service        # remote admin
 enable_unit thrive.service     # the appliance: pulls the thrive repo + runs core/
 enable_unit sprout-grow.service  # grow root to fill the SD card on first boot (MBR-safe)
-# DESKTOP edition: the cage/chromium kiosk is deliberately NOT enabled — this image
-# boots to LightDM → XFCE (below) instead. (Re-enable sprout-kiosk.service for the
-# kiosk edition.)
+# kiosk-vs-desktop session is decided at the END of this script, keyed on whether the
+# `desktop` profile installed lightdm — so the two editions never clobber each other.
 
 # networking: systemd-networkd wired DHCP + resolved (shared 20-dhcp.network overlay)
 enable_unit systemd-networkd.service
@@ -53,10 +52,18 @@ if ! grep -q '^thrive:' "$R/etc/passwd"; then
     echo "[postinst] created default user thrive (sudo)"
 fi
 
-# --- desktop edition: boot to graphical (LightDM autologin → XFCE) ------------
-# graphical.target so the box comes up in X; lightdm is the display manager. The
-# autologin + branding + thrive launcher come from the shared ../mkosi.extra overlay.
-ln -sf /usr/lib/systemd/system/graphical.target "$R/etc/systemd/system/default.target"
-ln -sf /usr/lib/systemd/system/lightdm.service "$R/etc/systemd/system/display-manager.service"
-enable_unit lightdm.service graphical.target
-echo "[postinst] pi desktop: graphical.target default, lightdm enabled (kiosk NOT enabled)"
+# --- session: desktop if the `desktop` profile installed lightdm, else kiosk ----
+if [ -e "$R/usr/sbin/lightdm" ] || [ -e "$R/usr/bin/lightdm" ]; then
+    # DESKTOP edition: boot graphical → LightDM autologin → XFCE. Autologin +
+    # branding + the thrive launcher come from the shared ../mkosi.extra overlay.
+    ln -sf /usr/lib/systemd/system/graphical.target "$R/etc/systemd/system/default.target"
+    ln -sf /usr/lib/systemd/system/lightdm.service  "$R/etc/systemd/system/display-manager.service"
+    enable_unit lightdm.service graphical.target
+    echo "[postinst] pi DESKTOP: graphical.target + lightdm"
+else
+    # KIOSK edition (default): headless multi-user + the cage/chromium kiosk.
+    enable_unit sprout-kiosk.service # Pi-on-a-TV → fullscreen thrive UI; self-gates on
+                                     # the `splash` cmdline (only runs in the `user` image)
+    ln -sf /usr/lib/systemd/system/multi-user.target "$R/etc/systemd/system/default.target"
+    echo "[postinst] pi KIOSK: multi-user.target + sprout-kiosk"
+fi

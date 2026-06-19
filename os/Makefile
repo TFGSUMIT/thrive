@@ -7,11 +7,13 @@ BUILDER := sprout-builder
 BASE ?= debian:trixie-slim
 # pi-image variant: user (quiet boot + Thrive splash) or dev (verbose console)
 PROFILE ?= user
+# pi EDITION: kiosk (default — the cage/chromium wall) or desktop (XFCE/LightDM)
+EDITION ?= kiosk
 # pass /dev/kvm through when present so QEMU/mkosi build is fast (TCG fallback otherwise)
 KVM := $(shell [ -e /dev/kvm ] && echo "--device /dev/kvm" || echo "")
 RUN := docker run --rm --privileged $(KVM) -v $$PWD:/work -w /work $(BUILDER)
 
-.PHONY: builder image pi-image vm shell clean
+.PHONY: builder image pi-image pi-desktop vm shell clean
 
 builder:                ## build the build-container (debian + mkosi + qemu)
 	docker build --build-arg BASE=$(BASE) -t $(BUILDER) build/
@@ -23,10 +25,13 @@ image: builder          ## produce sprout*.raw
 	# --force replaces a prior sprout.raw (mkosi refuses to overwrite otherwise)
 	$(RUN) --package-cache-directory=/work/mkosi.cache --force build
 
-pi-image: builder       ## produce sprout-pi.raw for Raspberry Pi 5 (arm64 MBR; dd to SD card)
+pi-image: builder       ## produce sprout-pi.raw for Raspberry Pi 5 (arm64 MBR; dd to SD card). EDITION=kiosk|desktop
 	# arm64 rootfs cross-built under qemu binfmt, then pi/build.sh assembles the
 	# Pi-bootable MBR disk — the Pi firmware can't read mkosi's GPT/UEFI output
-	docker run --rm --privileged -v $$PWD:/work -w /work/pi -e PROFILE=$(PROFILE) --entrypoint /bin/bash $(BUILDER) build.sh
+	docker run --rm --privileged -v $$PWD:/work -w /work/pi -e PROFILE=$(PROFILE) -e EDITION=$(EDITION) --entrypoint /bin/bash $(BUILDER) build.sh
+
+pi-desktop: ## the DESKTOP Pi image (XFCE/LightDM) — shorthand for `pi-image EDITION=desktop`
+	$(MAKE) pi-image EDITION=desktop
 
 vm: builder             ## boot the built image in QEMU
 	docker run --rm -it --privileged $(KVM) -v $$PWD:/work -w /work $(BUILDER) vm
