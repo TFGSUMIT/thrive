@@ -12,6 +12,7 @@ import { api } from './api'
 import LoginPage   from './components/LoginPage'
 import OnboardingScreen from './components/OnboardingScreen'
 import ProfilePicker    from './components/ProfilePicker'
+import OnScreenKeyboard from './components/OnScreenKeyboard'
 import LandingPage from './pages/LandingPage'
 import SettingsPage from './pages/SettingsPage'
 import { MODULES } from './moduleRegistry'
@@ -345,6 +346,7 @@ export default function App() {
           <ToastProvider>
             <ConfirmProvider>
               <Gate />
+              <OnScreenKeyboard />
             </ConfirmProvider>
           </ToastProvider>
         </VaultProvider>
