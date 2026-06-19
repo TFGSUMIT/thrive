@@ -338,6 +338,12 @@ export default function App() {
   useEffect(() => {
     const v = parseFloat(localStorage.getItem('thrive:uiAlpha'))
     if (!isNaN(v)) document.documentElement.style.setProperty('--ui-alpha', String(v))
+    // touch kiosk (e.g. the wall): hide the mouse cursor — it's a touch panel
+    if ((navigator.maxTouchPoints || 0) > 0) {
+      const st = document.createElement('style')
+      st.textContent = '*{cursor:none!important}'
+      document.head.appendChild(st)
+    }
   }, [])
   return (
     <BrowserRouter>

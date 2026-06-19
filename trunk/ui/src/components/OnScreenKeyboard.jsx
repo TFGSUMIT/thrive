@@ -83,6 +83,7 @@ export default function OnScreenKeyboard() {
   const [sym, setSym]         = useState(false)
   const targetRef = useRef(null)
   const panelRef  = useRef(null)
+  const hideTimer = useRef(null)
 
   useEffect(() => {
     const onSetting = () => setEnabled(oskEnabled())
@@ -92,12 +93,20 @@ export default function OnScreenKeyboard() {
 
   useEffect(() => {
     if (!enabled) return
-    const onIn  = (e) => { if (isTypable(e.target)) { targetRef.current = e.target; setTarget(e.target) } }
-    const onOut = (e) => { if (e.target === targetRef.current) { targetRef.current = null; setTarget(null) } }
+    const onIn  = (e) => { if (isTypable(e.target)) { clearTimeout(hideTimer.current); targetRef.current = e.target; setTarget(e.target) } }
+    // delay the hide so a tap on a Back/submit button completes (and fires its
+    // click) BEFORE the keyboard drops and the layout shifts — otherwise the first
+    // tap only dismisses the keyboard. A refocus within the window cancels it.
+    const onOut = (e) => {
+      if (e.target === targetRef.current) {
+        clearTimeout(hideTimer.current)
+        hideTimer.current = setTimeout(() => { targetRef.current = null; setTarget(null) }, 220)
+      }
+    }
     document.addEventListener('focusin', onIn)
     document.addEventListener('focusout', onOut)
     if (isTypable(document.activeElement)) { targetRef.current = document.activeElement; setTarget(document.activeElement) }
-    return () => { document.removeEventListener('focusin', onIn); document.removeEventListener('focusout', onOut) }
+    return () => { clearTimeout(hideTimer.current); document.removeEventListener('focusin', onIn); document.removeEventListener('focusout', onOut) }
   }, [enabled])
 
   // make room for the (tall) keyboard: publish its height as --osk-height (centered
