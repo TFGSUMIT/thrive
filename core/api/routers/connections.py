@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from typing import Optional
 import os, sqlite3, json
 
-from routers.auth import get_db as _connect, current_profile_id
+from routers.auth import get_db as _connect, current_profile_id, ownership_filter
 from crypto import encrypt, decrypt
 
 router = APIRouter(prefix="/connections", tags=["connections"])
@@ -34,14 +34,34 @@ def init_db():
         db.execute("""
             CREATE TABLE IF NOT EXISTS connections (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                owner_user_id INTEGER NOT NULL,          -- the profile that owns it
-                provider      TEXT NOT NULL,             -- e.g. 'steam', 'gog', 'google'
+                owner_user_id INTEGER,                   -- NULL = household (shared), set = personal
+                provider      TEXT NOT NULL,             -- e.g. 'steam', 'gog', 'netflix'
                 label         TEXT,                      -- user-facing name
                 secret        TEXT NOT NULL,             -- encrypted JSON credential blob
                 created_at    TEXT DEFAULT (datetime('now')),
                 updated_at    TEXT DEFAULT (datetime('now'))
             )
         """)
+        # if an older build made owner_user_id NOT NULL, rebuild it nullable so a
+        # connection can be HOUSEHOLD/shared (owner NULL) — e.g. a family streaming login
+        info = db.execute("PRAGMA table_info(connections)").fetchall()
+        owner = next((c for c in info if c[1] == "owner_user_id"), None)
+        if owner and owner[3] == 1:   # notnull flag set
+            db.executescript("""
+                CREATE TABLE connections__new (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    owner_user_id INTEGER,
+                    provider      TEXT NOT NULL,
+                    label         TEXT,
+                    secret        TEXT NOT NULL,
+                    created_at    TEXT DEFAULT (datetime('now')),
+                    updated_at    TEXT DEFAULT (datetime('now'))
+                );
+                INSERT INTO connections__new (id, owner_user_id, provider, label, secret, created_at, updated_at)
+                    SELECT id, owner_user_id, provider, label, secret, created_at, updated_at FROM connections;
+                DROP TABLE connections;
+                ALTER TABLE connections__new RENAME TO connections;
+            """)
         db.commit()
     finally:
         db.close()
@@ -64,6 +84,7 @@ class ConnIn(BaseModel):
     provider: str
     label: Optional[str] = None
     secret: dict                       # arbitrary credential blob → stored encrypted
+    shared: Optional[bool] = False     # True → household (owner NULL): visible to all profiles
 
 
 class ConnUpdate(BaseModel):
@@ -79,33 +100,39 @@ def _me(request: Request) -> int:
 
 
 @router.get("/")
-def list_connections(request: Request, provider: Optional[str] = None, db=Depends(get_db)):
-    """The signed-in profile's connections — metadata only, never the secret."""
+def list_connections(request: Request, scope: str = "all", provider: Optional[str] = None, db=Depends(get_db)):
+    """Connections visible to the signed-in profile — their personal ones plus
+    household (shared) ones. Metadata only, never the secret."""
     me = _me(request)
-    q = "SELECT id, provider, label, created_at, updated_at FROM connections WHERE owner_user_id = ?"
-    params = [me]
+    own_sql, own_params = ownership_filter(me, scope, column="owner_user_id")
+    q = f"SELECT id, provider, label, owner_user_id, created_at, updated_at FROM connections WHERE {own_sql}"
+    params = list(own_params)
     if provider:
         q += " AND provider = ?"; params.append(provider)
     rows = db.execute(q + " ORDER BY provider, id", params).fetchall()
-    return [dict(r) for r in rows]
+    out = []
+    for r in rows:
+        d = dict(r); d["shared"] = d.pop("owner_user_id") is None; out.append(d)
+    return out
 
 
 @router.post("/", status_code=201)
 def add_connection(body: ConnIn, request: Request, db=Depends(get_db)):
     me = _me(request)
+    owner = None if body.shared else me     # shared → household (owner NULL)
     cur = db.execute(
         "INSERT INTO connections (owner_user_id, provider, label, secret) VALUES (?, ?, ?, ?)",
-        (me, body.provider, body.label, encrypt(json.dumps(body.secret)))
+        (owner, body.provider, body.label, encrypt(json.dumps(body.secret)))
     )
     db.commit()
-    return {"id": cur.lastrowid, "provider": body.provider, "label": body.label}
+    return {"id": cur.lastrowid, "provider": body.provider, "label": body.label, "shared": owner is None}
 
 
 @router.patch("/{conn_id}")
 def update_connection(conn_id: int, body: ConnUpdate, request: Request, db=Depends(get_db)):
     me = _me(request)
     row = db.execute(
-        "SELECT id, label, secret FROM connections WHERE id = ? AND owner_user_id = ?",
+        "SELECT id, label, secret FROM connections WHERE id = ? AND (owner_user_id = ? OR owner_user_id IS NULL)",
         (conn_id, me)
     ).fetchone()
     if row is None:
@@ -124,7 +151,7 @@ def update_connection(conn_id: int, body: ConnUpdate, request: Request, db=Depen
 def delete_connection(conn_id: int, request: Request, db=Depends(get_db)):
     me = _me(request)
     row = db.execute(
-        "SELECT id FROM connections WHERE id = ? AND owner_user_id = ?", (conn_id, me)
+        "SELECT id FROM connections WHERE id = ? AND (owner_user_id = ? OR owner_user_id IS NULL)", (conn_id, me)
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Connection not found")

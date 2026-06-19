@@ -401,6 +401,7 @@ function ConnectionsSection() {
   const [secret, setSecret]     = useState({})
   const [busy, setBusy]         = useState(false)
   const [err, setErr]           = useState(null)
+  const [shared, setShared]     = useState(false)
 
   const load = () => api.get('/connections/').then(setConns).catch(() => {})
   useEffect(() => { load() }, [])
@@ -409,8 +410,8 @@ function ConnectionsSection() {
   const add = async () => {
     setBusy(true); setErr(null)
     try {
-      await api.post('/connections/', { provider, label: label || null, secret })
-      setLabel(''); setSecret({}); load()
+      await api.post('/connections/', { provider, label: label || null, secret, shared })
+      setLabel(''); setSecret({}); setShared(false); load()
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
   const del = async (id) => { try { await api.del(`/connections/${id}`); load() } catch (e) { setErr(e.message) } }
@@ -428,7 +429,10 @@ function ConnectionsSection() {
               <span style={{ fontSize: 12 }}>
                 <b>{(PROVIDERS[c.provider] || {}).name || c.provider}</b>
                 {c.label && <span style={{ color: 'var(--text-secondary,#aaa)', marginLeft: 8 }}>{c.label}</span>}
-                <span style={{ color: 'var(--color-success,#22c55e)', marginLeft: 8, fontSize: 10 }}>🔒 encrypted</span>
+                <span style={{ marginLeft: 8, fontSize: 10, color: c.shared ? '#3b82f6' : 'var(--text-tertiary,#888)' }}>
+                  {c.shared ? '🏠 household' : '🔒 personal'}
+                </span>
+                <span style={{ color: 'var(--color-success,#22c55e)', marginLeft: 6, fontSize: 10 }}>encrypted</span>
               </span>
               <button style={{ ...btnS, padding: '3px 9px', borderColor: 'var(--color-danger,#ef4444)', color: 'var(--color-danger,#ef4444)' }} onClick={() => del(c.id)}>✕</button>
             </div>
@@ -455,6 +459,11 @@ function ConnectionsSection() {
           </div>
         ))}
       </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 12, cursor: 'pointer', color: 'var(--text-secondary,#aaa)' }}>
+        <input type="checkbox" checked={shared} onChange={e => setShared(e.target.checked)} />
+        🏠 Shared with the household
+        <span style={{ fontSize: 10, color: 'var(--text-tertiary,#666)' }}>(everyone can see + use it — e.g. a streaming login)</span>
+      </label>
       {err && <div style={{ fontSize: 11, color: 'var(--color-danger,#ef4444)', marginTop: 8 }}>{err}</div>}
       <div style={{ marginTop: 12 }}>
         <button style={{ ...btnP, opacity: busy ? 0.5 : 1 }} onClick={add} disabled={busy}>{busy ? 'Saving…' : '+ Add connection'}</button>
