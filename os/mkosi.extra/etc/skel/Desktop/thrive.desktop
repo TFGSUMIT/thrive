@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=thrive
+GenericName=Household dashboard
+Comment=Open the local thrive dashboard in the browser
+Exec=firefox-esr http://localhost:9500
+Icon=thrive
+Terminal=false
+Categories=Network;System;
+StartupNotify=true
+Keywords=thrive;dashboard;home;
