@@ -26,9 +26,9 @@ enable_unit docker.service     # container engine
 enable_unit ssh.service        # remote admin
 enable_unit thrive.service     # the appliance: pulls the thrive repo + runs core/
 enable_unit sprout-grow.service  # grow root to fill the SD card on first boot (MBR-safe)
-enable_unit sprout-kiosk.service # Pi-on-a-TV -> fullscreen thrive UI. Self-gates on the
-                                 # `splash` cmdline (ConditionKernelCommandLine), so it only
-                                 # actually runs in the `user` image; harmless in `dev`.
+# DESKTOP edition: the cage/chromium kiosk is deliberately NOT enabled — this image
+# boots to LightDM → XFCE (below) instead. (Re-enable sprout-kiosk.service for the
+# kiosk edition.)
 
 # networking: systemd-networkd wired DHCP + resolved (shared 20-dhcp.network overlay)
 enable_unit systemd-networkd.service
@@ -53,6 +53,10 @@ if ! grep -q '^thrive:' "$R/etc/passwd"; then
     echo "[postinst] created default user thrive (sudo)"
 fi
 
-# headless: default to the text console (no graphical.target on this image)
-ln -sf /usr/lib/systemd/system/multi-user.target "$R/etc/systemd/system/default.target"
-echo "[postinst] pi image: headless multi-user.target default"
+# --- desktop edition: boot to graphical (LightDM autologin → XFCE) ------------
+# graphical.target so the box comes up in X; lightdm is the display manager. The
+# autologin + branding + thrive launcher come from the shared ../mkosi.extra overlay.
+ln -sf /usr/lib/systemd/system/graphical.target "$R/etc/systemd/system/default.target"
+ln -sf /usr/lib/systemd/system/lightdm.service "$R/etc/systemd/system/display-manager.service"
+enable_unit lightdm.service graphical.target
+echo "[postinst] pi desktop: graphical.target default, lightdm enabled (kiosk NOT enabled)"
