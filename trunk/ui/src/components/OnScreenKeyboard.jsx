@@ -100,11 +100,15 @@ export default function OnScreenKeyboard() {
     return () => { document.removeEventListener('focusin', onIn); document.removeEventListener('focusout', onOut) }
   }, [enabled])
 
-  // make room for the (tall) keyboard and lift the focused field above it
+  // make room for the (tall) keyboard: publish its height as --osk-height (centered
+  // screens like login/onboarding subtract it so they recenter ABOVE the keyboard),
+  // pad the body for scrollable pages, and lift a still-covered field into view.
   useEffect(() => {
-    if (!target) { document.body.style.paddingBottom = ''; return }
+    const root = document.documentElement
+    if (!target) { document.body.style.paddingBottom = ''; root.style.setProperty('--osk-height', '0px'); return }
     const h = panelRef.current ? panelRef.current.offsetHeight : Math.round(window.innerHeight * 0.42)
     document.body.style.paddingBottom = h + 'px'
+    root.style.setProperty('--osk-height', h + 'px')
     const id = requestAnimationFrame(() => {
       const el = targetRef.current; if (!el) return
       const r = el.getBoundingClientRect()
@@ -114,7 +118,10 @@ export default function OnScreenKeyboard() {
     return () => cancelAnimationFrame(id)
   }, [target])
 
-  useEffect(() => () => { document.body.style.paddingBottom = '' }, [])   // reset on unmount
+  useEffect(() => () => {
+    document.body.style.paddingBottom = ''
+    document.documentElement.style.setProperty('--osk-height', '0px')
+  }, [])
 
   if (!enabled || !target) return null
 
