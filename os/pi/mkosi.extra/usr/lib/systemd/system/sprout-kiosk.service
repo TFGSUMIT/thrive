@@ -15,6 +15,9 @@ After=getty@tty1.service
 [Service]
 Type=simple
 User=thrive
+# Pi 5 splits the GPU: card0=v3d (render-only), card1=vc4 (display). Point wlroots
+# at the display card, else cage finds no outputs and exits (black screen / loop).
+Environment=WLR_DRM_DEVICES=/dev/dri/card1
 PAMName=login
 TTYPath=/dev/tty1
 TTYReset=yes

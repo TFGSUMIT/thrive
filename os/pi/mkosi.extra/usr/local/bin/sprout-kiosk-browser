@@ -4,7 +4,7 @@
 # --kiosk locks it fullscreen.
 URL=http://localhost:9500
 exec chromium \
-    --kiosk --app="$URL" \
+    --kiosk --no-sandbox --app="$URL" \
     --ozone-platform=wayland \
     --no-first-run --fast --fast-start \
     --noerrdialogs --disable-infobars \

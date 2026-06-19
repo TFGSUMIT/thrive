@@ -43,13 +43,14 @@ if ! grep -q '^thrive:' "$R/etc/passwd"; then
     echo 'thrive:$6$sproutv1$azy5OZ0XW/YOufw3lOwF5nHD.MxsAtEOIXaaH6P2.Zhk9Dejq54xvEOPNwyc5YmXMTGFwTTSJw.YFVmFrFjcd0:20000:0:99999:7:::' >> "$R/etc/shadow"
     echo 'thrive:x:1000:' >> "$R/etc/group"
     echo 'thrive:!::'     >> "$R/etc/gshadow"
-    awk -F: 'BEGIN{OFS=":"} $1=="sudo"{ if($4=="") $4="thrive"; else $4=$4",thrive" } {print}' \
+    # sudo (admin) + video/input/render so cage/seatd can open the GPU + input on the kiosk
+    awk -F: 'BEGIN{OFS=":"} $1=="sudo"||$1=="video"||$1=="input"||$1=="render"{ if($4=="") $4="thrive"; else $4=$4",thrive" } {print}' \
         "$R/etc/group" > "$R/etc/group.tmp" && mv "$R/etc/group.tmp" "$R/etc/group"
     mkdir -p "$R/home/thrive"
     cp -aT "$R/etc/skel" "$R/home/thrive" 2>/dev/null || true
     chown -R 1000:1000 "$R/home/thrive"
     chmod 700 "$R/home/thrive"
-    echo "[postinst] created default user thrive (sudo)"
+    echo "[postinst] created default user thrive (sudo + video/input/render)"
 fi
 
 # --- session: desktop if the `desktop` profile installed lightdm, else kiosk ----
