@@ -35,7 +35,7 @@ export default function ProfilePicker({ onClose }) {
   const [err, setErr] = useState(null)
 
   useEffect(() => {
-    api.get('/users').then(list => setProfiles((list || []).filter(p => p.account))).catch(() => {})
+    api.get('/auth/profiles').then(list => setProfiles((list || []).filter(p => p.account))).catch(() => {})
   }, [])
 
   const pick = (p) => { setSel(p); setPassword(''); setErr(null) }

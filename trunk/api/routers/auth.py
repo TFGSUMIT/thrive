@@ -372,6 +372,23 @@ def me(request: Request):
     if not user: raise HTTPException(status_code=401, detail="Not authenticated")
     return user
 
+@router.get("/profiles")
+def list_profiles(request: Request):
+    """Household profiles + the username of any account linked to each — for the
+    kiosk profile-picker (switch / log in as a person). Available to any signed-in
+    identity including the shared Household, and lives in CORE so the picker works
+    even when the optional `users` module isn't installed."""
+    if not current_user_from_request(request):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    conn = get_db()
+    try:
+        return [dict(r) for r in conn.execute(
+            """SELECT u.id, u.name, u.avatar, u.color, a.username AS account
+               FROM users u LEFT JOIN accounts a ON a.user_id = u.id ORDER BY u.id"""
+        ).fetchall()]
+    finally:
+        conn.close()
+
 @router.patch("/me/prefs")
 def update_my_prefs(body: dict, request: Request):
     """Self-serve: any logged-in account updates ITS OWN UI prefs (theme, …).
