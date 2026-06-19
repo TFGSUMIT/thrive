@@ -12,7 +12,7 @@
 // (Plaid Link / Quickstart) — this panel consumes an existing one.
 // =============================================================================
 import { useState, useEffect } from 'react'
-import { api } from '@core/api'
+import { api } from '@trunk/api'
 import '../components/Settings.css'
 
 export default function PlaidPanel() {

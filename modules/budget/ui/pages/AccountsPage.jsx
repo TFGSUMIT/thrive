@@ -4,12 +4,12 @@
 // =============================================================================
 
 import { useEffect, useState } from 'react'
-import { api } from '@core/api'
-import { useToast } from '@core/context/ToastContext'
-import { useConfirm } from '@core/context/ConfirmModal'
-import { useAuth } from '@core/context/AuthContext'
-import { decryptEncString, loadVaultSymKey } from '@core/utils/vault'
-import ScopeToggle from '@core/components/ScopeToggle'
+import { api } from '@trunk/api'
+import { useToast } from '@trunk/context/ToastContext'
+import { useConfirm } from '@trunk/context/ConfirmModal'
+import { useAuth } from '@trunk/context/AuthContext'
+import { decryptEncString, loadVaultSymKey } from '@trunk/utils/vault'
+import ScopeToggle from '@trunk/components/ScopeToggle'
 import './Page.css'
 
 const fmtMoney = (n) => `$${(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`

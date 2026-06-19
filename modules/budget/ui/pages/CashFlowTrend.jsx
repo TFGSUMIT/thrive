@@ -9,7 +9,7 @@
 // scheduled transactions, drawn "ghosted" (translucent bars, dashed net line).
 // =============================================================================
 import { useState, useEffect, useCallback } from "react";
-import { api } from "@core/api";
+import { api } from "@trunk/api";
 
 const INCOME = "#22c55e", EXPENSE = "#ef4444", NET = "#3b82f6";
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];

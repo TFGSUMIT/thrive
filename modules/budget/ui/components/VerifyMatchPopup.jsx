@@ -4,7 +4,7 @@
 // =============================================================================
 
 import { useEffect, useState } from 'react'
-import { api } from '@core/api'
+import { api } from '@trunk/api'
 import { fmtMoney, fmtDate } from '../utils/constants'
 import { CreatablePayeeSelect, CreatableCategorySelect } from './CreatableSelect'
 

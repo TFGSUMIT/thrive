@@ -4,7 +4,7 @@
 // =============================================================================
 
 import { useEffect, useRef, useState } from 'react'
-import { api } from '@core/api'
+import { api } from '@trunk/api'
 import { FIELD_META, FIELDS } from '../utils/constants'
 import { parseCSV, matchRows, plaidRowsToCsv } from '../utils/csv'
 

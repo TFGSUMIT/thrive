@@ -9,9 +9,9 @@
 // calendars), and the calendar list (rename/recolor/hide, add local calendars).
 // =============================================================================
 import { useState, useEffect, useCallback } from 'react'
-import { api } from '@core/api'
-import { useToast } from '@core/context/ToastContext'
-import { useConfirm } from '@core/context/ConfirmModal'
+import { api } from '@trunk/api'
+import { useToast } from '@trunk/context/ToastContext'
+import { useConfirm } from '@trunk/context/ConfirmModal'
 import { getWeekStart, setWeekStart as saveWeekStart, PREFS_EVENT } from './prefs'
 
 const ACCENT = '#f97316'   // module color

@@ -6,8 +6,8 @@
 // manager; if there's no session yet it points you to Settings to connect.
 // =============================================================================
 import { useNavigate } from 'react-router-dom'
-import { useVault } from '@core/context/VaultContext'
-import VaultItems from '@core/components/VaultItems'
+import { useVault } from '@trunk/context/VaultContext'
+import VaultItems from '@trunk/components/VaultItems'
 
 const card       = { background: 'var(--bg-secondary,#181818)', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 10 }
 const btnSecondary = { fontFamily: 'monospace', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', background: 'none', border: '1px solid var(--border-color,#333)', borderRadius: 6, color: 'var(--text-secondary,#aaa)', cursor: 'pointer', padding: '7px 16px' }

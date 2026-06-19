@@ -8,8 +8,8 @@
 // for a long-lived token. Re-linking just repeats the dance.
 // =============================================================================
 import { useState, useEffect, useCallback } from 'react'
-import { api } from '@core/api'
-import { useToast } from '@core/context/ToastContext'
+import { api } from '@trunk/api'
+import { useToast } from '@trunk/context/ToastContext'
 
 const ACCENT = '#9d4edd'   // module color
 

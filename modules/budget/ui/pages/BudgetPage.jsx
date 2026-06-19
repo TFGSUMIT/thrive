@@ -8,8 +8,8 @@
 // =============================================================================
 import { useState, useEffect } from 'react'
 import { Routes, Route, Navigate, useNavigate, useLocation, useSearchParams } from 'react-router-dom'
-import { api } from '@core/api'
-import { useVault } from '@core/context/VaultContext'
+import { api } from '@trunk/api'
+import { useVault } from '@trunk/context/VaultContext'
 import AccountsPage     from './AccountsPage'
 import TransactionsPage from './TransactionsPage'
 import CategoriesPage   from './CategoriesPage'

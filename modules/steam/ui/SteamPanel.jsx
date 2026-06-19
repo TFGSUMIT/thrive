@@ -7,8 +7,8 @@
 // full profile URL). The /steam page consumes the links this panel manages.
 // =============================================================================
 import { useState, useEffect, useCallback } from 'react'
-import { api } from '@core/api'
-import { useToast } from '@core/context/ToastContext'
+import { api } from '@trunk/api'
+import { useToast } from '@trunk/context/ToastContext'
 
 const ACCENT = '#66c0f4'   // module color
 

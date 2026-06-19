@@ -10,8 +10,8 @@
 //     Just who lives here (name + avatar/color); managed over in Users.
 // =============================================================================
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useAuth } from "@core/context/AuthContext"
-import { api } from "@core/api"
+import { useAuth } from "@trunk/context/AuthContext"
+import { api } from "@trunk/api"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
 

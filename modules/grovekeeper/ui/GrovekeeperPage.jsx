@@ -8,8 +8,8 @@
 // "Set as background" (writes the unified thrive:ambient picker).
 // =============================================================================
 import { useEffect, useRef, useState } from 'react'
-import { api } from '@core/api'
-import { useToast } from '@core/context/ToastContext'
+import { api } from '@trunk/api'
+import { useToast } from '@trunk/context/ToastContext'
 import { TreeRenderer, PRESETS, DEFAULT_TOGGLES, FEATURES, ALGORITHM_LIST } from 'grovekeeper/src/index.js'
 
 const ACCENT = '#82b85f'

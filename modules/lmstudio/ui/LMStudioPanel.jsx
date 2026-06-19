@@ -7,7 +7,7 @@
 // page (/lmstudio).
 // =============================================================================
 import { useState, useEffect, useCallback } from 'react'
-import { api } from '@core/api'
+import { api } from '@trunk/api'
 
 const inp = { fontFamily: 'monospace', fontSize: 13, background: 'var(--bg-tertiary,#222)', border: '1px solid var(--border-color,#333)', borderRadius: 6, color: 'inherit', padding: '7px 10px', outline: 'none', width: '100%', boxSizing: 'border-box' }
 const lbl = { fontSize: 10, color: 'var(--text-tertiary,#666)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.1em' }

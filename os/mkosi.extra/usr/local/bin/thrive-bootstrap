@@ -6,7 +6,7 @@ set -euo pipefail
 REPO="${THRIVE_REPO:-https://github.com/nerfarrow/thrive.git}"
 BRANCH="${THRIVE_BRANCH:-main}"
 DEST="${THRIVE_DIR:-/opt/thrive}"
-CORE="${THRIVE_CORE:-$DEST/core}"   # platform shell: compose runs here, mounts ../modules
+TRUNK="${THRIVE_TRUNK:-$DEST/trunk}"   # platform shell: compose runs here, mounts ../modules
 
 # 1) ensure the thrive repo is present and current
 if [ ! -d "$DEST/.git" ]; then
@@ -29,7 +29,7 @@ if ! docker compose version >/dev/null 2>&1; then
 fi
 
 # 3) runtime state lives on the appliance and persists across repo updates:
-#    core/data/ (thrive.db + vault) and the modules/ tree compose bind-mounts.
-mkdir -p "$CORE/data" "$DEST/modules"
+#    trunk/data/ (thrive.db + vault) and the modules/ tree compose bind-mounts.
+mkdir -p "$TRUNK/data" "$DEST/modules"
 
 echo "[thrive-bootstrap] ready"

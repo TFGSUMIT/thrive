@@ -7,8 +7,8 @@
 // controls, save/delete, "set as background", and a way back to thrive.
 // =============================================================================
 import { useEffect, useRef, useState } from 'react'
-import { api } from '@core/api'
-import { useToast } from '@core/context/ToastContext'
+import { api } from '@trunk/api'
+import { useToast } from '@trunk/context/ToastContext'
 import { BlackHoleRenderer, PRESETS, DEFAULT_PARAMS, DEFAULT_TOGGLES, FEATURES } from 'blackhole-lensing/src/index.js'
 
 // "Set as background" writes the unified ambient picker (per device); only one

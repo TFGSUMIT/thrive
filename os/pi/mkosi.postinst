@@ -24,7 +24,7 @@ enable_unit() {
 
 enable_unit docker.service     # container engine
 enable_unit ssh.service        # remote admin
-enable_unit thrive.service     # the appliance: pulls the thrive repo + runs core/
+enable_unit thrive.service     # the appliance: pulls the thrive repo + runs trunk/
 enable_unit sprout-grow.service  # grow root to fill the SD card on first boot (MBR-safe)
 # kiosk-vs-desktop session is decided at the END of this script, keyed on whether the
 # `desktop` profile installed lightdm — so the two editions never clobber each other.

@@ -24,7 +24,7 @@ enable_unit() {
 
 enable_unit docker.service     # container engine
 enable_unit ssh.service        # remote admin
-enable_unit thrive.service     # the appliance: pulls the thrive repo + runs core/
+enable_unit thrive.service     # the appliance: pulls the thrive repo + runs trunk/
 
 # networking: systemd-networkd brings up wired ethernet via DHCP (20-dhcp.network),
 # systemd-resolved provides DNS. This makes network-online.target reliably reached —

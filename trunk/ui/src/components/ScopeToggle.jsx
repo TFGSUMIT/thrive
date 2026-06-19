@@ -6,7 +6,7 @@
 // shared household data, their own personal data, or both. Value is one of
 // 'all' | 'household' | 'mine' — pass it through to the API as ?scope=…
 //
-//   import ScopeToggle from '@core/components/ScopeToggle'
+//   import ScopeToggle from '@trunk/components/ScopeToggle'
 //   <ScopeToggle value={scope} onChange={setScope} />
 //
 // Renders nothing when the viewer has no profile (a shared/kiosk login can't own

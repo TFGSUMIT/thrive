@@ -1,4 +1,4 @@
-# Run from thrive/core/. The pluggable modules live one level up at thrive/modules
+# Run from thrive/trunk/. The pluggable modules live one level up at thrive/modules
 # and are bind-mounted in live. Explicit project name keeps container/network/image
 # names stable (thrive_*) regardless of the directory this is launched from.
 name: thrive
@@ -6,11 +6,11 @@ name: thrive
 services:
   api:
     # context is the REPO ROOT so the build installs each module's backend deps
-    # (modules/<name>/requirements.txt) alongside core's. Module code is still
+    # (modules/<name>/requirements.txt) alongside trunk's. Module code is still
     # bind-mounted live below — only deps are baked at build.
     build:
       context: ..
-      dockerfile: core/api/Dockerfile
+      dockerfile: trunk/api/Dockerfile
     container_name: thrive_api
     restart: unless-stopped
     volumes:
@@ -38,18 +38,18 @@ services:
 
   ui:
     # context is the REPO ROOT (one level up) so the UI build can see both the
-    # shared renderer libs under core/ AND modules/<name>/ui — the latter is
+    # shared renderer libs under trunk/ AND modules/<name>/ui — the latter is
     # discovered at build time by a Vite glob (build-time module pages).
     build:
       context: ..
-      dockerfile: core/ui/Dockerfile
+      dockerfile: trunk/ui/Dockerfile
     container_name: thrive_ui
     restart: unless-stopped
     ports:
       - "9500:80"
     # NOTE: no `depends_on: vault` — vault is an OPT-IN module that ships its own
-    # container (modules/vault/compose.yml), so core must start without it. nginx
-    # tolerates a missing thrive_vault (runtime resolver — see core/ui/nginx.conf).
+    # container (modules/vault/compose.yml), so trunk must start without it. nginx
+    # tolerates a missing thrive_vault (runtime resolver — see trunk/ui/nginx.conf).
     depends_on:
       - api
     networks:
@@ -57,8 +57,8 @@ services:
 
 # vault's Vaultwarden container used to live here; it moved to
 # modules/vault/compose.yml so it runs ONLY when the vault module is installed.
-# Bring up the full stack (core + every present module's containers) with
-# core/thrive-compose.sh, which merges each modules/*/compose.yml.
+# Bring up the full stack (trunk + every present module's containers) with
+# trunk/thrive-compose.sh, which merges each modules/*/compose.yml.
 volumes:
   thrive_keys:        # holds the personal-secret encryption key (crypto.py); a
                       # named volume kept local to the host, apart from the DB

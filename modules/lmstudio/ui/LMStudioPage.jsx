@@ -10,8 +10,8 @@
 // extraction scoreboard. The module also installs a compact panel into Settings.
 // =============================================================================
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
-import { api } from '@core/api'
-import { useToast } from '@core/context/ToastContext'
+import { api } from '@trunk/api'
+import { useToast } from '@trunk/context/ToastContext'
 
 const ACCENT = '#a855f7'   // module color
 

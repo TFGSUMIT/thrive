@@ -3,7 +3,7 @@
 // thrive UI
 // =============================================================================
 import { useState, useEffect, useCallback } from "react";
-import { api } from "@core/api";
+import { api } from "@trunk/api";
 import SankeyView from "./SankeyView";
 
 const API = "/reports/category-breakdown";

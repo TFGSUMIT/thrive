@@ -12,7 +12,7 @@ RemainAfterExit=yes
 StandardOutput=journal+console
 StandardError=journal+console
 EnvironmentFile=-/etc/thrive/thrive.env
-# NOTE: do NOT set WorkingDirectory=/opt/thrive/core — systemd chdir's there BEFORE
+# NOTE: do NOT set WorkingDirectory=/opt/thrive/trunk — systemd chdir's there BEFORE
 # ExecStartPre runs, but on first boot the repo isn't cloned yet, so the service
 # fails instantly before bootstrap can create it. Point compose at the file instead
 # (compose uses the file's dir as the project dir, so ../modules still resolves).
@@ -22,10 +22,10 @@ ExecStartPre=/usr/local/bin/thrive-bootstrap
 # connections on first boot — wait until `docker info` succeeds so compose
 # doesn't fail instantly with "cannot connect to the Docker daemon".
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do /usr/bin/docker info >/dev/null 2>&1 && exit 0; sleep 1; done; echo "docker daemon never became ready"; exit 1'
-# thrive-compose.sh merges core + every present module's compose.yml (e.g. vault's
-# Vaultwarden), so opt-in module containers come up without core naming them.
-ExecStart=/opt/thrive/core/thrive-compose.sh up -d --build
-ExecStop=/opt/thrive/core/thrive-compose.sh down
+# thrive-compose.sh merges trunk + every present module's compose.yml (e.g. vault's
+# Vaultwarden), so opt-in module containers come up without trunk naming them.
+ExecStart=/opt/thrive/trunk/thrive-compose.sh up -d --build
+ExecStop=/opt/thrive/trunk/thrive-compose.sh down
 TimeoutStartSec=0
 
 [Install]

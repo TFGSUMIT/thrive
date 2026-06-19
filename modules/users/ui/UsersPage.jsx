@@ -6,9 +6,9 @@
 // live in Settings → Accounts; an account may link to one profile here.
 // =============================================================================
 import { useState, useEffect, useCallback } from 'react'
-import { useAuth } from '@core/context/AuthContext'
-import { api } from '@core/api'
-import EmojiPicker from '@core/components/EmojiPicker'
+import { useAuth } from '@trunk/context/AuthContext'
+import { api } from '@trunk/api'
+import EmojiPicker from '@trunk/components/EmojiPicker'
 
 const card = { background: 'var(--bg-secondary,#181818)', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }
 const head = { padding: '12px 16px', borderBottom: '1px solid var(--border-color,#2a2a2a)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-tertiary,#666)' }
