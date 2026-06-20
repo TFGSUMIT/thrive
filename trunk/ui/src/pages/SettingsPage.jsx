@@ -234,12 +234,17 @@ function ModulesSection() {
 
   return (
     <div>
+      {!isAdmin && (
+        <div style={{ padding: '10px 16px', fontSize: 11, color: 'var(--text-tertiary,#888)', lineHeight: 1.6 }}>
+          Installing &amp; toggling modules is admin-only. Switch to an admin profile to manage them.
+        </div>
+      )}
       {installed.length > 0 && <GroupHead>Installed</GroupHead>}
       {installed.map((m, i) => (
         <ModuleRow key={m.id} m={m} i={i} saving={saving} editable={isAdmin} onIcon={setIcon} onColor={setColor}>
-          <SwitchField label="On" on={m.enabled} disabled={saving === m.id}
+          <SwitchField label="On" on={m.enabled} disabled={!isAdmin || saving === m.id}
             onChange={() => toggle(m)} color="var(--color-success,#22c55e)" />
-          <SwitchField label="Installed" on={true} disabled={saving === m.id}
+          <SwitchField label="Installed" on={true} disabled={!isAdmin || saving === m.id}
             onChange={() => uninstall(m)} color="var(--accent)" />
         </ModuleRow>
       ))}
@@ -247,7 +252,7 @@ function ModulesSection() {
       {available.length > 0 && <GroupHead>Available</GroupHead>}
       {available.map((m, i) => (
         <ModuleRow key={m.id} m={m} i={i} saving={saving} editable={isAdmin} onIcon={setIcon} onColor={setColor}>
-          <SwitchField label="Install" on={false} disabled={saving === m.id}
+          <SwitchField label="Install" on={false} disabled={!isAdmin || saving === m.id}
             onChange={() => install(m)} color="var(--accent)" />
         </ModuleRow>
       ))}
@@ -397,7 +402,9 @@ export default function SettingsPage() {
   const modulePanels = MODULES.filter(m => m.settings && activeIds.has(m.id))
 
   return (
-    <div style={{ maxWidth: 700, margin: '0 auto', padding: '1.5rem 1.5rem 3rem' }}>
+    <div className="settings-scroll" style={{ height: 'calc(100vh - 48px)', overflowY: 'auto' }}>
+      <style>{`.settings-scroll::-webkit-scrollbar{display:none}.settings-scroll{scrollbar-width:none;-ms-overflow-style:none}`}</style>
+      <div style={{ maxWidth: 700, margin: '0 auto', padding: '1.5rem 1.5rem 3rem' }}>
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: 14, fontWeight: 500, letterSpacing: '0.15em', textTransform: 'uppercase' }}>Settings</h1>
       </div>
@@ -445,6 +452,7 @@ export default function SettingsPage() {
           </CollapsibleCard>
         )
       })}
+      </div>
     </div>
   )
 }
