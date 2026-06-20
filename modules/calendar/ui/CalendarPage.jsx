@@ -125,6 +125,11 @@ export default function CalendarPage() {
   }, [])
 
   const [menuOpen, setMenuOpen] = useState(false)
+  // side panel (todo / groceries) — per-device: which side, and shown vs collapsed
+  const [side, setSideState] = useState(() => { try { return localStorage.getItem('thrive:cal:side') || 'right' } catch { return 'right' } })
+  const [showSide, setShowSideState] = useState(() => { try { return localStorage.getItem('thrive:cal:show') !== '0' } catch { return true } })
+  const setSide = (v) => { setSideState(v); setShowSideState(true); try { localStorage.setItem('thrive:cal:side', v); localStorage.setItem('thrive:cal:show', '1') } catch {} }
+  const setShowSide = (v) => { setShowSideState(v); try { localStorage.setItem('thrive:cal:show', v ? '1' : '0') } catch {} }
   const [navModules, setNavModules] = useState([])
   useEffect(() => {
     api.get('/modules').then(ms => setNavModules(ms.filter(m => m.installed && m.enabled && m.nav_path && m.id !== 'calendar'))).catch(() => {})
@@ -263,6 +268,7 @@ export default function CalendarPage() {
   // feature-detect the list modules → show them as a calendar-side panel
   const hasTodo = navModules.some(m => m.id === 'todo')
   const hasGroceries = navModules.some(m => m.id === 'groceries')
+  const showPanel = (hasTodo || hasGroceries) && showSide
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', overflow: 'hidden' }}>
@@ -282,7 +288,23 @@ export default function CalendarPage() {
             {menuOpen && (
               <>
                 <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 150 }} />
-                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 151, minWidth: 200, background: 'var(--bg-secondary,#181818)', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 8, overflow: 'hidden', boxShadow: '0 8px 28px var(--shadow-color,rgba(0,0,0,0.45))' }}>
+                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 151, minWidth: 220, background: 'var(--bg-secondary,#181818)', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 8, overflow: 'hidden', boxShadow: '0 8px 28px var(--shadow-color,rgba(0,0,0,0.45))' }}>
+                  {/* side panel position / collapse — only when a list module is active */}
+                  {(hasTodo || hasGroceries) && (
+                    <>
+                      <div style={{ padding: '8px 16px 4px', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-tertiary,#666)' }}>Side panel</div>
+                      <div style={{ display: 'flex', gap: 6, padding: '4px 16px 10px' }}>
+                        {[['left', '◧ Left'], ['right', '◨ Right'], ['off', '✕ Hide']].map(([v, lbl]) => {
+                          const on = v === 'off' ? !showSide : (showSide && side === v)
+                          return (
+                            <button key={v} onClick={() => (v === 'off' ? setShowSide(false) : setSide(v))}
+                              style={{ flex: 1, fontFamily: 'monospace', fontSize: 10, letterSpacing: '0.04em', padding: '7px 4px', borderRadius: 5, cursor: 'pointer', border: `1px solid ${on ? ACCENT : 'var(--border-color,#333)'}`, background: on ? `${ACCENT}22` : 'none', color: on ? ACCENT : 'var(--text-secondary,#aaa)' }}>{lbl}</button>
+                          )
+                        })}
+                      </div>
+                      <div style={{ borderTop: '1px solid var(--border-color,#2a2a2a)' }} />
+                    </>
+                  )}
                   {cals.length > 0 && <div style={{ padding: '8px 16px 4px', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-tertiary,#666)' }}>Calendars</div>}
                   {cals.map(c => (
                     <button key={`cal-${c.id}`} onClick={() => toggleCal(c)} title={c.account_label ? `${c.account_label} (${c.kind})` : 'thrive calendar'}
@@ -313,7 +335,8 @@ export default function CalendarPage() {
 
       {/* ── calendar grid + the side lists (todo / groceries, feature-detected) ── */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {showPanel && side === 'left' && <SideLists hasTodo={hasTodo} hasGroceries={hasGroceries} side="left" onCollapse={() => setShowSide(false)} />}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
 
       {/* ── sticky day-of-week header ── */}
       <div style={{ ...COL7, borderBottom: '1px solid var(--border-color,#2a2a2a)', flexShrink: 0 }}>
@@ -355,8 +378,14 @@ export default function CalendarPage() {
           </div>
         ))}
       </div>
+          {(hasTodo || hasGroceries) && !showSide && (
+            <button onClick={() => setShowSide(true)} title="show lists"
+              style={{ position: 'absolute', top: 8, [side === 'left' ? 'left' : 'right']: 0, zIndex: 6, background: 'var(--bg-secondary,#181818)', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: side === 'left' ? '0 8px 8px 0' : '8px 0 0 8px', color: 'var(--text-secondary,#aaa)', fontSize: 16, lineHeight: 1, cursor: 'pointer', padding: '10px 6px' }}>
+              {side === 'left' ? '›' : '‹'}
+            </button>
+          )}
         </div>
-        <SideLists hasTodo={hasTodo} hasGroceries={hasGroceries} />
+        {showPanel && side === 'right' && <SideLists hasTodo={hasTodo} hasGroceries={hasGroceries} side="right" onCollapse={() => setShowSide(false)} />}
       </div>
 
       {/* ── event modal ── */}

@@ -43,11 +43,22 @@ function Panel({ endpoint, title, icon, accent, field, doneKey }) {
   )
 }
 
-export default function SideLists({ hasTodo, hasGroceries }) {
+export default function SideLists({ hasTodo, hasGroceries, side = 'right', onCollapse }) {
   if (!hasTodo && !hasGroceries) return null
+  const edge = side === 'left'
+    ? { borderRight: '1px solid var(--border-color,#2a2a2a)' }
+    : { borderLeft: '1px solid var(--border-color,#2a2a2a)' }
   return (
-    <div className="side-scroll" style={{ width: 300, flexShrink: 0, borderLeft: '1px solid var(--border-color,#2a2a2a)', overflowY: 'auto', minHeight: 0 }}>
+    <div className="side-scroll" style={{ width: 300, flexShrink: 0, ...edge, overflowY: 'auto', minHeight: 0 }}>
       <style>{`.side-scroll::-webkit-scrollbar{display:none}.side-scroll{scrollbar-width:none}`}</style>
+      {onCollapse && (
+        <div style={{ display: 'flex', justifyContent: side === 'left' ? 'flex-start' : 'flex-end', padding: '6px 8px 0' }}>
+          <button onClick={onCollapse} title="hide panel"
+            style={{ background: 'none', border: 'none', color: 'var(--text-tertiary,#666)', fontSize: 20, lineHeight: 1, cursor: 'pointer', padding: '2px 8px' }}>
+            {side === 'left' ? '‹' : '›'}
+          </button>
+        </div>
+      )}
       {hasTodo      && <Panel endpoint="/todo"      title="To-Do"    icon="✅" accent="#22c55e" field="title" doneKey="done" />}
       {hasGroceries && <Panel endpoint="/groceries" title="Groceries" icon="🛒" accent="#f59e0b" field="name"  doneKey="got"  />}
     </div>
