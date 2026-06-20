@@ -353,7 +353,7 @@ export default function CalendarPage() {
             </div>
             <div style={COL7}>
               {monthCells(y, m, weekStart).map((d, i) => {
-                if (!d) return <div key={i} style={{ minHeight: 'clamp(74px, 11vh, 120px)', borderTop: i >= 7 ? '1px solid var(--border-color,#1c1c1c)' : 'none', borderLeft: i % 7 ? '1px solid var(--border-color,#1c1c1c)' : 'none', background: 'var(--bg-secondary,#141414)', opacity: 0.4 }} />
+                if (!d) return <div key={i} style={{ minHeight: 'clamp(74px, 11vh, 120px)', borderTop: i >= 7 ? '1px solid var(--border-color,#1c1c1c)' : 'none', borderLeft: i % 7 ? '1px solid var(--border-color,#1c1c1c)' : 'none' }} />
                 const k = dkey(d)
                 const isToday = k === todayKey
                 const dayEvents = byDay[k] || []
