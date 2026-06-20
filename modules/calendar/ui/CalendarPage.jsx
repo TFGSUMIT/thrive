@@ -371,7 +371,7 @@ export default function CalendarPage() {
                     style={{ minHeight: 'clamp(74px, 11vh, 120px)', minWidth: 0, overflow: 'hidden', padding: 5, cursor: writable.length ? 'pointer' : 'default', boxSizing: 'border-box',
                       borderTop: wi ? '1px solid var(--border-color,#2a2a2a)' : 'none',
                       borderLeft: isFirst ? `3px solid ${mc}` : (ci ? '1px solid var(--border-color,#2a2a2a)' : 'none'),
-                      background: isToday ? `${mc}1f` : isFirst ? `${mc}14` : 'none' }}>
+                      background: isToday ? `${mc}1f` : isFirst ? `${mc}14` : `${mc}0d` }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 3 }}>
                       {isFirst && <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', fontFamily: 'monospace', color: mc }}>{MON_ABBR[d.getMonth()]}{d.getMonth() === 0 ? ` ${d.getFullYear()}` : ''}</span>}
                       <span style={{ fontSize: 13, fontFamily: 'monospace', padding: '1px 4px', color: (isToday || isFirst) ? mc : 'var(--text-tertiary,#888)', fontWeight: (isToday || isFirst) ? 700 : 400 }}>{d.getDate()}</span>
