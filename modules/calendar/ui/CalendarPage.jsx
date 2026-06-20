@@ -16,6 +16,7 @@ import { useToast } from '@trunk/context/ToastContext'
 import { useConfirm } from '@trunk/context/ConfirmModal'
 import { getWeekStart, PREFS_EVENT } from './prefs'
 import SideLists from './SideLists'
+import TimeGrid from './TimeGrid'
 
 const ACCENT = '#f97316'   // module color
 
@@ -41,6 +42,7 @@ const DOW_SUN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const dowLabels = (ws) => (ws === 'sun' ? DOW_SUN : DOW_MON)
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const MON_ABBR = MONTHS.map(s => s.slice(0, 3).toUpperCase())
+const VIEWS = [['current', 'Scroll'], ['month', 'Month'], ['week', 'Week'], ['day', 'Day']]
 
 const pad  = (n) => String(n).padStart(2, '0')
 const dkey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
@@ -82,6 +84,29 @@ const buildWeeks = (weekStart) => {
   const weeks = []
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7))
   return weeks
+}
+
+// the 5–6 week grid for ONE month (Month view): real Dates incl. the leading/
+// trailing days of adjacent months (rendered faded), aligned to the week start.
+const monthGrid = (cursor, weekStart) => {
+  const y = cursor.getFullYear(), m = cursor.getMonth()
+  const first = new Date(y, m, 1)
+  const last = new Date(y, m + 1, 0)
+  const offset = weekStart === 'sun' ? first.getDay() : (first.getDay() + 6) % 7
+  const cur = new Date(y, m, 1 - offset)
+  const weeks = []
+  while (cur <= last) {
+    const row = []
+    for (let i = 0; i < 7; i++) { row.push(new Date(cur)); cur.setDate(cur.getDate() + 1) }
+    weeks.push(row)
+  }
+  return weeks
+}
+// the 7 days of the week containing `cursor`, aligned to the week start
+const weekDays = (cursor, weekStart) => {
+  const offset = weekStart === 'sun' ? cursor.getDay() : (cursor.getDay() + 6) % 7
+  const start = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() - offset)
+  return Array.from({ length: 7 }, (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i))
 }
 
 // the local day keys an event spans (end-exclusive on both kinds)
@@ -153,6 +178,16 @@ export default function CalendarPage() {
   const weeks = useMemo(() => buildWeeks(weekStart), [weekStart])  // continuous week grid
   const [label,  setLabel] = useState({ y: today.getFullYear(), m: today.getMonth() })
   const scrollRef = useRef(null)
+
+  // view mode (per-device): the rolling scroll ('current') or a paged month/week/day.
+  // `cursor` is the focused day that month/week/day navigate; 'current' ignores it.
+  const [view, setViewState] = useState(() => { try { return localStorage.getItem('thrive:cal:view') || 'current' } catch { return 'current' } })
+  const setView = (v) => { setViewState(v); try { localStorage.setItem('thrive:cal:view', v) } catch {} }
+  const [cursor, setCursor] = useState(today)
+  const shift = (n) => setCursor(c => {
+    if (view === 'month') return new Date(c.getFullYear(), c.getMonth() + n, 1)
+    return new Date(c.getFullYear(), c.getMonth(), c.getDate() + n * (view === 'week' ? 7 : 1))
+  })
   const rangeStart = new Date(months[0].y, months[0].m, 1)
   const rangeEnd   = new Date(months[months.length - 1].y, months[months.length - 1].m + 1, 1)
 
@@ -188,12 +223,14 @@ export default function CalendarPage() {
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { loadBudget() }, [loadBudget])
 
-  // start at the week holding the 1st of today's month
+  // start the rolling scroll at the week holding the 1st of today's month (also
+  // re-runs when switching back to the scroll view, which remounts the grid)
   useLayoutEffect(() => {
+    if (view !== 'current') return
     const c = scrollRef.current; if (!c) return
     const el = c.querySelector(`[data-firstof="${today.getFullYear()}-${today.getMonth()}"]`)
     if (el) c.scrollTop = el.offsetTop
-  }, [])
+  }, [view])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // header label follows the month whose 1st most recently passed the top
   const onScroll = () => {
@@ -208,6 +245,8 @@ export default function CalendarPage() {
     const el = c.querySelector(`[data-firstof="${today.getFullYear()}-${today.getMonth()}"]`)
     if (el) c.scrollTo({ top: el.offsetTop, behavior: 'smooth' })
   }
+  // "Today": snap the rolling scroll, or re-focus the paged views on today
+  const goToday = () => { setCursor(new Date()); if (view === 'current') scrollToToday() }
 
   const calById  = { ...Object.fromEntries(cals.map(c => [c.id, c])), ...BUDGET_CAL }
   const writable = cals.filter(c => c.writable)
@@ -220,9 +259,11 @@ export default function CalendarPage() {
   for (const d of Object.keys(byDay)) byDay[d].sort((a, b) => (b.all_day - a.all_day) || a.start.localeCompare(b.start))
 
   // ── modal ──
-  const openNew = (dayKey) => {
+  const openNew = (dayKey, hour) => {
     const base = dayKey || todayKey
-    setForm({ ...EMPTY_FORM, calendar_id: writable[0]?.id || '', startDate: base, endDate: base, start: `${base}T09:00`, end: `${base}T10:00` })
+    const sh = hour == null ? 9 : hour
+    const eh = Math.min(sh + 1, 23)
+    setForm({ ...EMPTY_FORM, calendar_id: writable[0]?.id || '', startDate: base, endDate: base, start: `${base}T${pad(sh)}:00`, end: `${base}T${pad(eh)}:00` })
     setModal('new')
   }
   const openEdit = (ev) => {
@@ -277,18 +318,43 @@ export default function CalendarPage() {
   const hasGroceries = navModules.some(m => m.id === 'groceries')
   const showPanel = (hasTodo || hasGroceries) && showSide
 
+  // ── view-aware header (label + color), nav arrows, paged day-sets ──
+  const wkDays = weekDays(cursor, weekStart)
+  const monShort = (d) => MONTHS[d.getMonth()].slice(0, 3)
+  let headMain, headSub, headColor
+  if (view === 'current')      { headMain = MONTHS[label.m];           headSub = String(label.y);                headColor = MONTH_COLORS[label.m] }
+  else if (view === 'month')   { headMain = MONTHS[cursor.getMonth()]; headSub = String(cursor.getFullYear());    headColor = MONTH_COLORS[cursor.getMonth()] }
+  else if (view === 'day')     { headMain = `${DOW_SUN[cursor.getDay()]} ${monShort(cursor)} ${cursor.getDate()}`; headSub = String(cursor.getFullYear()); headColor = MONTH_COLORS[cursor.getMonth()] }
+  else /* week */ {
+    const a = wkDays[0], b = wkDays[6]
+    headMain = a.getMonth() === b.getMonth() ? `${monShort(a)} ${a.getDate()} – ${b.getDate()}` : `${monShort(a)} ${a.getDate()} – ${monShort(b)} ${b.getDate()}`
+    headSub = a.getFullYear() === b.getFullYear() ? String(a.getFullYear()) : `${a.getFullYear()} / ${b.getFullYear()}`
+    headColor = MONTH_COLORS[a.getMonth()]
+  }
+  const navArrow = { ...btnS, padding: '4px 11px', fontSize: 16, lineHeight: 1 }
+
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', overflow: 'hidden' }}>
 
       {/* ── slim top bar (label tracks the visible month) ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 16px', borderBottom: '1px solid var(--border-color,#2a2a2a)', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-          <span style={{ fontSize: 22, fontWeight: 700, letterSpacing: '0.04em', color: MONTH_COLORS[label.m] }}>{MONTHS[label.m]}</span>
-          <span style={{ fontSize: 18, color: 'var(--text-tertiary,#888)', fontFamily: 'monospace' }}>{label.y}</span>
-          {loading && <span style={{ fontSize: 10, color: 'var(--text-tertiary,#666)' }}>syncing…</span>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {view !== 'current' && <button style={navArrow} onClick={() => shift(-1)}>‹</button>}
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            <span style={{ fontSize: 22, fontWeight: 700, letterSpacing: '0.04em', color: headColor }}>{headMain}</span>
+            <span style={{ fontSize: 18, color: 'var(--text-tertiary,#888)', fontFamily: 'monospace' }}>{headSub}</span>
+            {loading && <span style={{ fontSize: 10, color: 'var(--text-tertiary,#666)' }}>syncing…</span>}
+          </div>
+          {view !== 'current' && <button style={navArrow} onClick={() => shift(1)}>›</button>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button style={btnS} onClick={scrollToToday}>Today</button>
+          <div style={{ display: 'flex', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 6, overflow: 'hidden' }}>
+            {VIEWS.map(([v, lbl], i) => (
+              <button key={v} onClick={() => setView(v)}
+                style={{ fontFamily: 'monospace', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', padding: '6px 10px', border: 'none', borderLeft: i ? '1px solid var(--border-color,#2a2a2a)' : 'none', cursor: 'pointer', background: view === v ? 'var(--text-primary,#e8e6e0)' : 'none', color: view === v ? 'var(--bg-primary,#0f0f0f)' : 'var(--text-secondary,#aaa)' }}>{lbl}</button>
+            ))}
+          </div>
+          <button style={btnS} onClick={goToday}>Today</button>
           <button style={btnP} onClick={() => openNew()} disabled={!writable.length}>+ Event</button>
           <div style={{ position: 'relative' }}>
             <button style={menuOpen ? btnP : btnS} onClick={() => setMenuOpen(o => !o)}>Menu</button>
@@ -345,52 +411,106 @@ export default function CalendarPage() {
         {showPanel && side === 'left' && <SideLists hasTodo={hasTodo} hasGroceries={hasGroceries} side="left" onCollapse={() => setShowSide(false)} />}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
 
-      {/* ── sticky day-of-week header ── */}
-      <div style={{ ...COL7, borderBottom: '1px solid var(--border-color,#2a2a2a)', flexShrink: 0 }}>
-        {DOW.map(d => <div key={d} style={{ padding: '8px 0', textAlign: 'center', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--text-tertiary,#666)' }}>{d}</div>)}
-      </div>
+      {/* ── day-of-week strip (Scroll + Month share the 7-col grid) ── */}
+      {(view === 'current' || view === 'month') && (
+        <div style={{ ...COL7, borderBottom: '1px solid var(--border-color,#2a2a2a)', flexShrink: 0 }}>
+          {DOW.map(d => <div key={d} style={{ padding: '8px 0', textAlign: 'center', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--text-tertiary,#666)' }}>{d}</div>)}
+        </div>
+      )}
 
-      {/* ── one continuous scroll of weeks; months flow into each other, the 1st
-             of each month is tinted + labelled in-cell (scrollbar hidden — touch wall) ── */}
-      <style>{`.cal-scroll::-webkit-scrollbar{display:none}.cal-scroll{scrollbar-width:none;-ms-overflow-style:none}`}</style>
-      <div ref={scrollRef} onScroll={onScroll} className="cal-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-        {weeks.map((week, wi) => {
-          const firstOf = week.find(d => d && d.getDate() === 1)
-          const anchor = firstOf ? `${firstOf.getFullYear()}-${firstOf.getMonth()}` : undefined
-          return (
-            <div key={wi} {...(anchor ? { 'data-firstof': anchor } : {})} style={COL7}>
+      {/* ── Scroll: one continuous stream of weeks; months flow into each other,
+             the 1st is tinted + labelled in-cell (scrollbar hidden — touch wall) ── */}
+      {view === 'current' && (
+        <>
+          <style>{`.cal-scroll::-webkit-scrollbar{display:none}.cal-scroll{scrollbar-width:none;-ms-overflow-style:none}`}</style>
+          <div ref={scrollRef} onScroll={onScroll} className="cal-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+            {weeks.map((week, wi) => {
+              const firstOf = week.find(d => d && d.getDate() === 1)
+              const anchor = firstOf ? `${firstOf.getFullYear()}-${firstOf.getMonth()}` : undefined
+              return (
+                <div key={wi} {...(anchor ? { 'data-firstof': anchor } : {})} style={COL7}>
+                  {week.map((d, ci) => {
+                    if (!d) return <div key={ci} style={{ minHeight: 'clamp(74px, 11vh, 120px)', borderTop: wi ? '1px solid var(--border-color,#1c1c1c)' : 'none', borderLeft: ci ? '1px solid var(--border-color,#1c1c1c)' : 'none', background: 'var(--bg-secondary,#141414)', opacity: 0.4 }} />
+                    const k = dkey(d)
+                    const isToday = k === todayKey
+                    const isFirst = d.getDate() === 1
+                    const mc = MONTH_COLORS[d.getMonth()]
+                    const dayEvents = byDay[k] || []
+                    return (
+                      <div key={ci} onClick={() => writable.length && openNew(k)}
+                        style={{ minHeight: 'clamp(74px, 11vh, 120px)', minWidth: 0, overflow: 'hidden', padding: 5, cursor: writable.length ? 'pointer' : 'default', boxSizing: 'border-box',
+                          borderTop: wi ? '1px solid var(--border-color,#2a2a2a)' : 'none',
+                          borderLeft: isFirst ? `3px solid ${mc}` : (ci ? '1px solid var(--border-color,#2a2a2a)' : 'none'),
+                          background: isToday ? `${mc}1f` : isFirst ? `${mc}14` : `${mc}0d` }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 3 }}>
+                          {isFirst && <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', fontFamily: 'monospace', color: mc }}>{MON_ABBR[d.getMonth()]}{d.getMonth() === 0 ? ` ${d.getFullYear()}` : ''}</span>}
+                          <span style={{ fontSize: 13, fontFamily: 'monospace', padding: '1px 4px', color: (isToday || isFirst) ? mc : 'var(--text-tertiary,#888)', fontWeight: (isToday || isFirst) ? 700 : 400 }}>{d.getDate()}</span>
+                        </div>
+                        {dayEvents.slice(0, 5).map(ev => (
+                          <div key={`${ev.calendar_id}:${ev.id}:${k}`} onClick={e => { e.stopPropagation(); ev.source === 'budget' ? navigate('/budget') : openEdit(ev) }}
+                            title={`${ev.title}${ev.all_day ? '' : ` · ${fmtTime(ev.start)}`}`}
+                            style={{ fontSize: 11, lineHeight: '17px', padding: '0 5px', marginBottom: 2, borderRadius: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', background: `${calById[ev.calendar_id]?.color || ACCENT}33`, borderLeft: `2px solid ${calById[ev.calendar_id]?.color || ACCENT}` }}>
+                            {!ev.all_day && <span style={{ color: 'var(--text-tertiary,#999)', fontFamily: 'monospace' }}>{fmtTime(ev.start)} </span>}{ev.title}
+                          </div>
+                        ))}
+                        {dayEvents.length > 5 && <div style={{ fontSize: 10, color: 'var(--text-tertiary,#666)', paddingLeft: 5 }}>+{dayEvents.length - 5} more</div>}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {/* ── Month: a single month, sized to fill the screen ── */}
+      {view === 'month' && (
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          {monthGrid(cursor, weekStart).map((week, wi) => (
+            <div key={wi} style={{ ...COL7, flex: 1, minHeight: 0 }}>
               {week.map((d, ci) => {
-                if (!d) return <div key={ci} style={{ minHeight: 'clamp(74px, 11vh, 120px)', borderTop: wi ? '1px solid var(--border-color,#1c1c1c)' : 'none', borderLeft: ci ? '1px solid var(--border-color,#1c1c1c)' : 'none', background: 'var(--bg-secondary,#141414)', opacity: 0.4 }} />
                 const k = dkey(d)
                 const isToday = k === todayKey
+                const inMonth = d.getMonth() === cursor.getMonth()
                 const isFirst = d.getDate() === 1
                 const mc = MONTH_COLORS[d.getMonth()]
                 const dayEvents = byDay[k] || []
                 return (
                   <div key={ci} onClick={() => writable.length && openNew(k)}
-                    style={{ minHeight: 'clamp(74px, 11vh, 120px)', minWidth: 0, overflow: 'hidden', padding: 5, cursor: writable.length ? 'pointer' : 'default', boxSizing: 'border-box',
+                    style={{ minWidth: 0, overflow: 'hidden', padding: 5, cursor: writable.length ? 'pointer' : 'default', boxSizing: 'border-box',
                       borderTop: wi ? '1px solid var(--border-color,#2a2a2a)' : 'none',
                       borderLeft: isFirst ? `3px solid ${mc}` : (ci ? '1px solid var(--border-color,#2a2a2a)' : 'none'),
-                      background: isToday ? `${mc}1f` : isFirst ? `${mc}14` : `${mc}0d` }}>
+                      background: isToday ? `${mc}1f` : inMonth ? (isFirst ? `${mc}14` : `${mc}0d`) : 'none',
+                      opacity: inMonth ? 1 : 0.4 }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 3 }}>
                       {isFirst && <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', fontFamily: 'monospace', color: mc }}>{MON_ABBR[d.getMonth()]}{d.getMonth() === 0 ? ` ${d.getFullYear()}` : ''}</span>}
                       <span style={{ fontSize: 13, fontFamily: 'monospace', padding: '1px 4px', color: (isToday || isFirst) ? mc : 'var(--text-tertiary,#888)', fontWeight: (isToday || isFirst) ? 700 : 400 }}>{d.getDate()}</span>
                     </div>
-                    {dayEvents.slice(0, 5).map(ev => (
+                    {dayEvents.slice(0, 4).map(ev => (
                       <div key={`${ev.calendar_id}:${ev.id}:${k}`} onClick={e => { e.stopPropagation(); ev.source === 'budget' ? navigate('/budget') : openEdit(ev) }}
                         title={`${ev.title}${ev.all_day ? '' : ` · ${fmtTime(ev.start)}`}`}
                         style={{ fontSize: 11, lineHeight: '17px', padding: '0 5px', marginBottom: 2, borderRadius: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', background: `${calById[ev.calendar_id]?.color || ACCENT}33`, borderLeft: `2px solid ${calById[ev.calendar_id]?.color || ACCENT}` }}>
                         {!ev.all_day && <span style={{ color: 'var(--text-tertiary,#999)', fontFamily: 'monospace' }}>{fmtTime(ev.start)} </span>}{ev.title}
                       </div>
                     ))}
-                    {dayEvents.length > 5 && <div style={{ fontSize: 10, color: 'var(--text-tertiary,#666)', paddingLeft: 5 }}>+{dayEvents.length - 5} more</div>}
+                    {dayEvents.length > 4 && <div style={{ fontSize: 10, color: 'var(--text-tertiary,#666)', paddingLeft: 5 }}>+{dayEvents.length - 4} more</div>}
                   </div>
                 )
               })}
             </div>
-          )
-        })}
-      </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Week / Day: hourly timeline ── */}
+      {(view === 'week' || view === 'day') && (
+        <TimeGrid
+          days={view === 'week' ? wkDays : [new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate())]}
+          byDay={byDay} calById={calById} accent={ACCENT} todayKey={todayKey}
+          onOpenEvent={ev => (ev.source === 'budget' ? navigate('/budget') : openEdit(ev))}
+          onNewAt={(k, h) => writable.length && openNew(k, h)} />
+      )}
           {(hasTodo || hasGroceries) && !showSide && (
             <button onClick={() => setShowSide(true)} title="show lists"
               style={{ position: 'absolute', top: 8, [side === 'left' ? 'left' : 'right']: 0, zIndex: 6, background: 'var(--bg-secondary,#181818)', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: side === 'left' ? '0 8px 8px 0' : '8px 0 0 8px', color: 'var(--text-secondary,#aaa)', fontSize: 16, lineHeight: 1, cursor: 'pointer', padding: '10px 6px' }}>
