@@ -297,7 +297,7 @@ export default function CalendarPage() {
                         {[['left', '◧ Left'], ['right', '◨ Right'], ['off', '✕ Hide']].map(([v, lbl]) => {
                           const on = v === 'off' ? !showSide : (showSide && side === v)
                           return (
-                            <button key={v} onClick={() => (v === 'off' ? setShowSide(false) : setSide(v))}
+                            <button key={v} onClick={() => { (v === 'off' ? setShowSide(false) : setSide(v)); setMenuOpen(false) }}
                               style={{ flex: 1, fontFamily: 'monospace', fontSize: 10, letterSpacing: '0.04em', padding: '7px 4px', borderRadius: 5, cursor: 'pointer', border: `1px solid ${on ? ACCENT : 'var(--border-color,#333)'}`, background: on ? `${ACCENT}22` : 'none', color: on ? ACCENT : 'var(--text-secondary,#aaa)' }}>{lbl}</button>
                           )
                         })}
