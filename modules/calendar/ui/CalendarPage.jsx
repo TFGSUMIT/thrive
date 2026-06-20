@@ -15,6 +15,7 @@ import { api } from '@trunk/api'
 import { useToast } from '@trunk/context/ToastContext'
 import { useConfirm } from '@trunk/context/ConfirmModal'
 import { getWeekStart, PREFS_EVENT } from './prefs'
+import SideLists from './SideLists'
 
 const ACCENT = '#f97316'   // module color
 
@@ -259,6 +260,9 @@ export default function CalendarPage() {
   }
 
   const readonly = modal && modal !== 'new' && modal.readonly
+  // feature-detect the list modules → show them as a calendar-side panel
+  const hasTodo = navModules.some(m => m.id === 'todo')
+  const hasGroceries = navModules.some(m => m.id === 'groceries')
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', overflow: 'hidden' }}>
@@ -307,6 +311,10 @@ export default function CalendarPage() {
         </div>
       )}
 
+      {/* ── calendar grid + the side lists (todo / groceries, feature-detected) ── */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+
       {/* ── sticky day-of-week header ── */}
       <div style={{ ...COL7, borderBottom: '1px solid var(--border-color,#2a2a2a)', flexShrink: 0 }}>
         {DOW.map(d => <div key={d} style={{ padding: '8px 0', textAlign: 'center', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--text-tertiary,#666)' }}>{d}</div>)}
@@ -346,6 +354,9 @@ export default function CalendarPage() {
             </div>
           </div>
         ))}
+      </div>
+        </div>
+        <SideLists hasTodo={hasTodo} hasGroceries={hasGroceries} />
       </div>
 
       {/* ── event modal ── */}
