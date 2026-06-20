@@ -9,7 +9,7 @@
 // snaps back. Click a day to add an event, an event to edit. Events are never
 // purged — the window just range-queries what's loaded.
 // =============================================================================
-import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react'
+import { useState, useEffect, useCallback, useRef, useLayoutEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '@trunk/api'
 import { useToast } from '@trunk/context/ToastContext'
@@ -40,6 +40,7 @@ const DOW_MON = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const DOW_SUN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const dowLabels = (ws) => (ws === 'sun' ? DOW_SUN : DOW_MON)
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+const MON_ABBR = MONTHS.map(s => s.slice(0, 3).toUpperCase())
 
 const pad  = (n) => String(n).padStart(2, '0')
 const dkey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
@@ -64,18 +65,23 @@ const buildMonths = () => {
   for (let i = -RANGE; i <= RANGE; i++) { const d = new Date(t.getFullYear(), t.getMonth() + i, 1); out.push({ y: d.getFullYear(), m: d.getMonth() }) }
   return out
 }
-// cells for ONE month block: leading blanks for the weekday offset, the days,
-// then trailing blanks to a full week (no spill-over from adjacent months — the
-// neighbouring month block sits right above/below in the scroll).
-const monthCells = (y, m, weekStart) => {
-  const first = new Date(y, m, 1)
+// ONE continuous grid over the whole window: weeks flow across month boundaries
+// (no per-month padding/break — the last days of a month and the first of the
+// next share a row). Blanks appear only at the very top/bottom of the range.
+// The 1st of each month is tinted + labelled in the cell itself (see render).
+const buildWeeks = (weekStart) => {
+  const t = new Date()
+  const first = new Date(t.getFullYear(), t.getMonth() - RANGE, 1)
+  const lastFirst = new Date(t.getFullYear(), t.getMonth() + RANGE, 1)
+  const last = new Date(lastFirst.getFullYear(), lastFirst.getMonth() + 1, 0)  // last day of final month
   const offset = weekStart === 'sun' ? first.getDay() : (first.getDay() + 6) % 7
-  const dim = new Date(y, m + 1, 0).getDate()
   const cells = []
   for (let i = 0; i < offset; i++) cells.push(null)
-  for (let day = 1; day <= dim; day++) cells.push(new Date(y, m, day))
+  for (let d = new Date(first); d <= last; d.setDate(d.getDate() + 1)) cells.push(new Date(d))
   while (cells.length % 7) cells.push(null)
-  return cells
+  const weeks = []
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7))
+  return weeks
 }
 
 // the local day keys an event spans (end-exclusive on both kinds)
@@ -143,7 +149,8 @@ export default function CalendarPage() {
   const [form,    setForm]    = useState(EMPTY_FORM)
   const [busy,    setBusy]    = useState(false)
 
-  const [months] = useState(buildMonths)            // fixed scroll window
+  const [months] = useState(buildMonths)            // fixed scroll window (range math + label)
+  const weeks = useMemo(() => buildWeeks(weekStart), [weekStart])  // continuous week grid
   const [label,  setLabel] = useState({ y: today.getFullYear(), m: today.getMonth() })
   const scrollRef = useRef(null)
   const rangeStart = new Date(months[0].y, months[0].m, 1)
@@ -181,24 +188,24 @@ export default function CalendarPage() {
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { loadBudget() }, [loadBudget])
 
-  // start centered on today's month
+  // start at the week holding the 1st of today's month
   useLayoutEffect(() => {
     const c = scrollRef.current; if (!c) return
-    const el = c.querySelector(`[data-month="${today.getFullYear()}-${today.getMonth()}"]`)
+    const el = c.querySelector(`[data-firstof="${today.getFullYear()}-${today.getMonth()}"]`)
     if (el) c.scrollTop = el.offsetTop
   }, [])
 
-  // header label follows the month at the top of the scroll
+  // header label follows the month whose 1st most recently passed the top
   const onScroll = () => {
     const c = scrollRef.current; if (!c) return
     const line = c.scrollTop + 4
     let best = null
-    for (const b of c.querySelectorAll('[data-month]')) { if (b.offsetTop <= line) best = b; else break }
-    if (best) { const [y, m] = best.dataset.month.split('-').map(Number); setLabel(l => (l.y === y && l.m === m ? l : { y, m })) }
+    for (const b of c.querySelectorAll('[data-firstof]')) { if (b.offsetTop <= line) best = b; else break }
+    if (best) { const [y, m] = best.dataset.firstof.split('-').map(Number); setLabel(l => (l.y === y && l.m === m ? l : { y, m })) }
   }
   const scrollToToday = () => {
     const c = scrollRef.current; if (!c) return
-    const el = c.querySelector(`[data-month="${today.getFullYear()}-${today.getMonth()}"]`)
+    const el = c.querySelector(`[data-firstof="${today.getFullYear()}-${today.getMonth()}"]`)
     if (el) c.scrollTo({ top: el.offsetTop, behavior: 'smooth' })
   }
 
@@ -343,26 +350,32 @@ export default function CalendarPage() {
         {DOW.map(d => <div key={d} style={{ padding: '8px 0', textAlign: 'center', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--text-tertiary,#666)' }}>{d}</div>)}
       </div>
 
-      {/* ── scrollable stack of month grids (scrollbar hidden — it's a touch wall) ── */}
+      {/* ── one continuous scroll of weeks; months flow into each other, the 1st
+             of each month is tinted + labelled in-cell (scrollbar hidden — touch wall) ── */}
       <style>{`.cal-scroll::-webkit-scrollbar{display:none}.cal-scroll{scrollbar-width:none;-ms-overflow-style:none}`}</style>
       <div ref={scrollRef} onScroll={onScroll} className="cal-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-        {months.map(({ y, m }) => (
-          <div key={`${y}-${m}`} data-month={`${y}-${m}`}>
-            <div style={{ position: 'sticky', top: 0, zIndex: 5, padding: '6px 16px', background: `${MONTH_COLORS[m]}14`, borderBottom: '1px solid var(--border-color,#2a2a2a)', borderLeft: `3px solid ${MONTH_COLORS[m]}`, fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', color: MONTH_COLORS[m] }}>
-              {MONTHS[m]} <span style={{ color: 'var(--text-tertiary,#888)', fontFamily: 'monospace' }}>{y}</span>
-            </div>
-            <div style={COL7}>
-              {monthCells(y, m, weekStart).map((d, i) => {
-                if (!d) return <div key={i} style={{ minHeight: 'clamp(74px, 11vh, 120px)', borderTop: i >= 7 ? '1px solid var(--border-color,#1c1c1c)' : 'none', borderLeft: i % 7 ? '1px solid var(--border-color,#1c1c1c)' : 'none' }} />
+        {weeks.map((week, wi) => {
+          const firstOf = week.find(d => d && d.getDate() === 1)
+          const anchor = firstOf ? `${firstOf.getFullYear()}-${firstOf.getMonth()}` : undefined
+          return (
+            <div key={wi} {...(anchor ? { 'data-firstof': anchor } : {})} style={COL7}>
+              {week.map((d, ci) => {
+                if (!d) return <div key={ci} style={{ minHeight: 'clamp(74px, 11vh, 120px)', borderTop: wi ? '1px solid var(--border-color,#1c1c1c)' : 'none', borderLeft: ci ? '1px solid var(--border-color,#1c1c1c)' : 'none', background: 'var(--bg-secondary,#141414)', opacity: 0.4 }} />
                 const k = dkey(d)
                 const isToday = k === todayKey
+                const isFirst = d.getDate() === 1
+                const mc = MONTH_COLORS[d.getMonth()]
                 const dayEvents = byDay[k] || []
                 return (
-                  <div key={i} onClick={() => writable.length && openNew(k)}
+                  <div key={ci} onClick={() => writable.length && openNew(k)}
                     style={{ minHeight: 'clamp(74px, 11vh, 120px)', minWidth: 0, overflow: 'hidden', padding: 5, cursor: writable.length ? 'pointer' : 'default', boxSizing: 'border-box',
-                      borderTop: i >= 7 ? '1px solid var(--border-color,#2a2a2a)' : 'none', borderLeft: i % 7 ? '1px solid var(--border-color,#2a2a2a)' : 'none',
-                      background: isToday ? `${MONTH_COLORS[m]}1f` : 'none' }}>
-                    <div style={{ fontSize: 13, fontFamily: 'monospace', padding: '1px 4px', marginBottom: 3, color: isToday ? MONTH_COLORS[m] : 'var(--text-tertiary,#888)', fontWeight: isToday ? 700 : 400 }}>{d.getDate()}</div>
+                      borderTop: wi ? '1px solid var(--border-color,#2a2a2a)' : 'none',
+                      borderLeft: isFirst ? `3px solid ${mc}` : (ci ? '1px solid var(--border-color,#2a2a2a)' : 'none'),
+                      background: isToday ? `${mc}1f` : isFirst ? `${mc}14` : 'none' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 3 }}>
+                      {isFirst && <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', fontFamily: 'monospace', color: mc }}>{MON_ABBR[d.getMonth()]}{d.getMonth() === 0 ? ` ${d.getFullYear()}` : ''}</span>}
+                      <span style={{ fontSize: 13, fontFamily: 'monospace', padding: '1px 4px', color: (isToday || isFirst) ? mc : 'var(--text-tertiary,#888)', fontWeight: (isToday || isFirst) ? 700 : 400 }}>{d.getDate()}</span>
+                    </div>
                     {dayEvents.slice(0, 5).map(ev => (
                       <div key={`${ev.calendar_id}:${ev.id}:${k}`} onClick={e => { e.stopPropagation(); ev.source === 'budget' ? navigate('/budget') : openEdit(ev) }}
                         title={`${ev.title}${ev.all_day ? '' : ` · ${fmtTime(ev.start)}`}`}
@@ -375,8 +388,8 @@ export default function CalendarPage() {
                 )
               })}
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
           {(hasTodo || hasGroceries) && !showSide && (
             <button onClick={() => setShowSide(true)} title="show lists"
