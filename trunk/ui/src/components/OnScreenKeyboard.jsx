@@ -65,6 +65,34 @@ function pressEnter(el) {
   for (const type of ['keydown', 'keyup'])
     el.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }))
 }
+// caret navigation — synthetic arrow key events don't move the caret, so set the
+// selection directly. number/email inputs expose no selection API (caret() falls
+// back to end), so setSelectionRange is wrapped in try/catch.
+function setCaretPos(el, pos) { try { el.setSelectionRange(pos, pos) } catch {} ; el.focus() }
+function charMove(el, dir) {
+  const [s, e] = caret(el)
+  const pos = dir < 0 ? (s === e ? Math.max(0, s - 1) : s)
+                      : (s === e ? Math.min(el.value.length, e + 1) : e)
+  setCaretPos(el, pos)
+}
+// vertical move: line up/down keeping the column (textarea); collapses to
+// home/end on single-line inputs (no newlines)
+function lineMove(el, dir) {
+  const v = el.value, [s] = caret(el)
+  const lineStart = v.lastIndexOf('\n', s - 1) + 1
+  const col = s - lineStart
+  if (dir < 0) {
+    if (lineStart === 0) return setCaretPos(el, 0)
+    const prevStart = v.lastIndexOf('\n', lineStart - 2) + 1
+    setCaretPos(el, prevStart + Math.min(col, lineStart - 1 - prevStart))
+  } else {
+    const lineEnd = v.indexOf('\n', s)
+    if (lineEnd === -1) return setCaretPos(el, v.length)
+    const nextStart = lineEnd + 1
+    const ne = v.indexOf('\n', nextStart)
+    setCaretPos(el, nextStart + Math.min(col, (ne === -1 ? v.length : ne) - nextStart))
+  }
+}
 
 // big, touch-friendly keys that grow with the screen height
 const keyStyle = (flex = 1, accent = false) => ({
@@ -87,7 +115,7 @@ export default function OnScreenKeyboard() {
   const [enabled, setEnabled] = useState(oskEnabled)
   const [target, setTarget]   = useState(null)
   const [shift, setShift]     = useState(false)
-  const [sym, setSym]         = useState(false)
+  const [page, setPage]       = useState('abc')  // 'abc' (letters) | 'sym' (?123) | 'nav' (numbers + arrows)
   const [pressed, setPressed] = useState(null)   // key currently lit on tap
   const targetRef = useRef(null)
   const panelRef  = useRef(null)
@@ -172,7 +200,10 @@ export default function OnScreenKeyboard() {
     next.focus(); try { next.select() } catch {}
   }
 
-  const rows = sym ? ROWS_SYM : ROWS_LOWER
+  const rows = page === 'sym' ? ROWS_SYM : ROWS_LOWER
+  // page cycle: letters → numbers+arrows → symbols → letters (arrows one tap from text)
+  const NEXT_PAGE  = { abc: 'nav', nav: 'sym', sym: 'abc' }
+  const PAGE_LABEL = { abc: '123', nav: '#+=', sym: 'abc' }
 
   return (
     <div ref={panelRef} style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 1000,
@@ -183,15 +214,32 @@ export default function OnScreenKeyboard() {
       pointerEvents: visible ? 'auto' : 'none', willChange: 'transform' }}
       onPointerDown={(e) => e.preventDefault()}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        {rows.map((row, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'center', padding: i === 1 ? '0 5%' : 0 }}>
-            {i === 2 && !sym && key('⇧', () => setShift(s => !s), { flex: 1.5, accent: true, k: 'shift' })}
-            {row.map(ch => (sym ? key(ch, (el) => insertText(el, ch), { k: ch }) : letter(ch)))}
-            {i === 2 && key('⌫', backspace, { flex: 1.5, accent: true, k: 'bsp' })}
-          </div>
-        ))}
+        {page === 'nav' ? (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              {'1234567890'.split('').map(d => key(d, (el) => insertText(el, d), { k: d }))}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '0 4%' }}>
+              {key('Home', (el) => setCaretPos(el, 0), { flex: 1.6, accent: true, k: 'home' })}
+              {key('←', (el) => charMove(el, -1), { flex: 1.2, accent: true, k: 'aL' })}
+              {key('↑', (el) => lineMove(el, -1), { flex: 1.2, accent: true, k: 'aU' })}
+              {key('↓', (el) => lineMove(el, 1),  { flex: 1.2, accent: true, k: 'aD' })}
+              {key('→', (el) => charMove(el, 1),  { flex: 1.2, accent: true, k: 'aR' })}
+              {key('End', (el) => setCaretPos(el, el.value.length), { flex: 1.6, accent: true, k: 'end' })}
+              {key('⌫', backspace, { flex: 1.4, accent: true, k: 'bsp2' })}
+            </div>
+          </>
+        ) : (
+          rows.map((row, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'center', padding: i === 1 ? '0 5%' : 0 }}>
+              {i === 2 && page === 'abc' && key('⇧', () => setShift(s => !s), { flex: 1.5, accent: true, k: 'shift' })}
+              {row.map(ch => (page === 'sym' ? key(ch, (el) => insertText(el, ch), { k: ch }) : letter(ch)))}
+              {i === 2 && key('⌫', backspace, { flex: 1.5, accent: true, k: 'bsp' })}
+            </div>
+          ))
+        )}
         <div style={{ display: 'flex', justifyContent: 'center' }}>
-          {key(sym ? 'abc' : '?123', () => setSym(s => !s), { flex: 1.8, accent: true, k: 'sym' })}
+          {key(PAGE_LABEL[page], () => setPage(NEXT_PAGE[page]), { flex: 1.8, accent: true, k: 'page' })}
           {key('⇥', (el) => focusNextTypable(el), { flex: 1.3, accent: true, k: 'tab' })}
           {key('space', (el) => insertText(el, ' '), { flex: 4.5, k: 'space' })}
           {key('⏎', pressEnter, { flex: 1.8, accent: true, k: 'enter' })}
