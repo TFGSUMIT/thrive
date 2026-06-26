@@ -160,6 +160,18 @@ export default function OnScreenKeyboard() {
     insertText(el, shift ? ch.toUpperCase() : ch); if (shift) setShift(false)
   }, { k: ch })
 
+  // Tab → advance focus to the next typable field on the page (wraps around);
+  // synthetic key events don't move focus, so do it directly. The OSK stays open
+  // because the new field is itself typable (focusin re-targets it).
+  const focusNextTypable = (el) => {
+    const all = [...document.querySelectorAll('input, textarea')]
+      .filter(n => isTypable(n) && n.offsetParent !== null && !panelRef.current?.contains(n))
+    if (!all.length) return
+    const idx = all.indexOf(el)
+    const next = all[(idx + 1) % all.length] || all[0]
+    next.focus(); try { next.select() } catch {}
+  }
+
   const rows = sym ? ROWS_SYM : ROWS_LOWER
 
   return (
@@ -180,7 +192,8 @@ export default function OnScreenKeyboard() {
         ))}
         <div style={{ display: 'flex', justifyContent: 'center' }}>
           {key(sym ? 'abc' : '?123', () => setSym(s => !s), { flex: 1.8, accent: true, k: 'sym' })}
-          {key('space', (el) => insertText(el, ' '), { flex: 5, k: 'space' })}
+          {key('⇥', (el) => focusNextTypable(el), { flex: 1.3, accent: true, k: 'tab' })}
+          {key('space', (el) => insertText(el, ' '), { flex: 4.5, k: 'space' })}
           {key('⏎', pressEnter, { flex: 1.8, accent: true, k: 'enter' })}
           {key('▾', () => { targetRef.current?.blur(); setTarget(null) }, { flex: 1.3, accent: true, k: 'hide' })}
         </div>
