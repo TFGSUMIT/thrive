@@ -166,6 +166,25 @@ export default function TransactionsPage({ initial = {}, onBalanceChange }) {
         } catch (e) { showToast(e.message, 'error') }
     }
 
+    // Inline single-field edit from a row cell. Category/payee/memo update in place
+    // (no scroll jump); amount/date affect ordering + running balance, so reload.
+    async function handlePatch(id, fields) {
+        const affectsOrderOrBalance = 'amount' in fields || 'date' in fields
+        if (!affectsOrderOrBalance) {
+            const extra = {}
+            if ('category_id' in fields) extra.category_name = categories.find(c => c.id === fields.category_id)?.name ?? null
+            if ('payee_id' in fields) extra.payee_name = payees.find(p => p.id === fields.payee_id)?.name ?? null
+            setTransactions(prev => prev.map(t => (t.id === id ? { ...t, ...fields, ...extra } : t)))
+        }
+        try {
+            await api.patch(`/transactions/${id}`, fields)
+            if (affectsOrderOrBalance) { reload(); loadLookups() }
+        } catch (e) {
+            showToast(e.message, 'error')
+            reload()   // revert the optimistic change
+        }
+    }
+
     // ── Plaid sync ────────────────────────────────────────────────────────────
 
     async function handlePlaidSync() {
@@ -459,6 +478,8 @@ export default function TransactionsPage({ initial = {}, onBalanceChange }) {
                                 <TransactionRow
                                     key={t.id} t={t}
                                     showBalance={showBalanceCol} showAccount={!accountId}
+                                    categoryOptions={categoryOptions} payeeOptions={payeeOptions}
+                                    onPatch={handlePatch}
                                     selected={selected.has(t.id)}
                                     onSelect={() => toggleSelect(t.id)}
                                     onEdit={() => {
