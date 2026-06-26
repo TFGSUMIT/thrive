@@ -62,22 +62,31 @@ def update_module(module_id: str, request: Request, body: dict):
             raise HTTPException(status_code=404, detail="Module not found")
         return {"ok": True}
 
+    activated = False
     if "installed" in body:
         want = bool(body["installed"])
         if not want and mod_registry.is_core_module(module_id):
             raise HTTPException(status_code=400, detail="Cannot uninstall a core module")
         ok = mod_registry.set_module_installed(module_id, want)
+        activated = want
     elif "enabled" in body:
         want = bool(body["enabled"])
         if not want and mod_registry.is_core_module(module_id):
             raise HTTPException(status_code=400, detail="Cannot disable a core module")
         ok = mod_registry.set_module_enabled(module_id, want)
+        activated = want
     else:
         raise HTTPException(status_code=400, detail="Missing 'installed' or 'enabled' field")
 
     if not ok:
         raise HTTPException(status_code=404, detail="Module not found")
-    return {"ok": True, "note": "Restart API to apply changes"}
+
+    # enabling/installing: load the module's routers live so it works without an
+    # API restart. disabling leaves them dormant (the UI gates the module off).
+    if activated:
+        mod_registry.hot_load_module(request.app, module_id)
+        return {"ok": True, "active": True}
+    return {"ok": True, "note": "Disabled — its API stays dormant until the next restart"}
 
 # ── platform settings ─────────────────────────────────────────────────────────
 @app.get("/settings")

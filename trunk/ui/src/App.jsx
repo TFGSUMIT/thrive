@@ -13,6 +13,7 @@ import LoginPage   from './components/LoginPage'
 import OnboardingScreen from './components/OnboardingScreen'
 import ProfilePicker    from './components/ProfilePicker'
 import OnScreenKeyboard from './components/OnScreenKeyboard'
+import ErrorBoundary from './components/ErrorBoundary'
 import LandingPage from './pages/LandingPage'
 import SettingsPage from './pages/SettingsPage'
 import { MODULES } from './moduleRegistry'
@@ -251,6 +252,7 @@ function Shell() {
   // The page owns the toggle and the way back out (Esc); it fires this event.
   const [immersive, setImmersive] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const location = useLocation()
   useEffect(() => {
     const onImmersive = (e) => setImmersive(!!e.detail)
     window.addEventListener('thrive:immersive', onImmersive)
@@ -258,24 +260,31 @@ function Shell() {
   }, [])
   return (
     <>
-      <AmbientBackground />
+      {/* ambient + HUD render module components; isolate them so a bad one fails
+          silently instead of taking down the whole shell */}
+      <ErrorBoundary silent><AmbientBackground /></ErrorBoundary>
       {!immersive && <TopNav onOpenPicker={() => setPickerOpen(true)} />}
       {/* module HUD overlays (e.g. the FPS module) — painted on top, even in
           immersive so they can read frame-rate over a full-screen renderer */}
-      <ModuleOverlays />
+      <ErrorBoundary silent><ModuleOverlays /></ErrorBoundary>
       {pickerOpen && <ProfilePicker onClose={() => setPickerOpen(false)} />}
       <main style={{ marginTop: immersive ? 0 : 48, minHeight: immersive ? '100vh' : 'calc(100vh - 48px)' }}>
-        <Routes>
-          <Route path="/"         element={<RootRoute />} />
-          {/* module routes — emitted from the registry, not hardcoded.
-              Headless modules (no nav route, e.g. fps) declare no path/Page. */}
-          {MODULES.filter(m => m.path && m.Page).map(m => {
-            const Page = m.Page
-            return <Route key={m.id} path={m.path} element={<Page />} />
-          })}
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="*"         element={<Navigate to="/" replace />} />
-        </Routes>
+        {/* a page crash (e.g. a just-enabled module whose API still 404s) shows a
+            fallback here; nav + the rest of the shell stay alive. Re-keyed per
+            route so navigating away clears it. */}
+        <ErrorBoundary resetKey={location.pathname}>
+          <Routes>
+            <Route path="/"         element={<RootRoute />} />
+            {/* module routes — emitted from the registry, not hardcoded.
+                Headless modules (no nav route, e.g. fps) declare no path/Page. */}
+            {MODULES.filter(m => m.path && m.Page).map(m => {
+              const Page = m.Page
+              return <Route key={m.id} path={m.path} element={<Page />} />
+            })}
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="*"         element={<Navigate to="/" replace />} />
+          </Routes>
+        </ErrorBoundary>
       </main>
     </>
   )

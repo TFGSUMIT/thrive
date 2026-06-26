@@ -148,6 +148,40 @@ def get_active_ids() -> set[str]:
 
 
 # ── router loading ────────────────────────────────────────────────────────────
+# module ids whose routers are already registered on the app this process —
+# guards against double-registration on hot-load / re-enable
+_LOADED_ROUTERS: set[str] = set()
+
+
+def _load_one(app: FastAPI, m: dict):
+    """Register a single discovered module's routers on the app (see the package
+    note in load_module_routers for why we load from file under a unique name)."""
+    module_path = Path(m["_path"])
+    # keep the module root importable for any module-local helper imports
+    if str(module_path) not in sys.path:
+        sys.path.insert(0, str(module_path))
+    for dotpath in m.get("api_routers", []):
+        rel  = dotpath.replace(".", "/") + ".py"
+        file = module_path / rel
+        if not file.exists():
+            print(f"[modules] {m['id']}: router file not found ({rel})")
+            continue
+        unique = f"thrive_mod_{m['id']}_{dotpath.replace('.', '_')}"
+        try:
+            spec = importlib.util.spec_from_file_location(unique, file)
+            mod  = importlib.util.module_from_spec(spec)
+            sys.modules[unique] = mod
+            spec.loader.exec_module(mod)
+            if hasattr(mod, "router"):
+                app.include_router(mod.router)
+                print(f"[modules] loaded {m['id']} → {dotpath}")
+            else:
+                print(f"[modules] {dotpath} has no 'router' attribute")
+        except Exception as e:
+            print(f"[modules] failed to load {dotpath}: {e}")
+    _LOADED_ROUTERS.add(m["id"])
+
+
 def load_module_routers(app: FastAPI, discovered: list[dict], active_ids: set[str]):
     """Dynamically import and register each active module's API routers.
 
@@ -164,29 +198,23 @@ def load_module_routers(app: FastAPI, discovered: list[dict], active_ids: set[st
         if m["id"] not in active_ids:
             print(f"[modules] {m['id']} not active — skipping")
             continue
-        module_path = Path(m["_path"])
-        # keep the module root importable for any module-local helper imports
-        if str(module_path) not in sys.path:
-            sys.path.insert(0, str(module_path))
-        for dotpath in m.get("api_routers", []):
-            rel  = dotpath.replace(".", "/") + ".py"
-            file = module_path / rel
-            if not file.exists():
-                print(f"[modules] {m['id']}: router file not found ({rel})")
-                continue
-            unique = f"thrive_mod_{m['id']}_{dotpath.replace('.', '_')}"
-            try:
-                spec = importlib.util.spec_from_file_location(unique, file)
-                mod  = importlib.util.module_from_spec(spec)
-                sys.modules[unique] = mod
-                spec.loader.exec_module(mod)
-                if hasattr(mod, "router"):
-                    app.include_router(mod.router)
-                    print(f"[modules] loaded {m['id']} → {dotpath}")
-                else:
-                    print(f"[modules] {dotpath} has no 'router' attribute")
-            except Exception as e:
-                print(f"[modules] failed to load {dotpath}: {e}")
+        _load_one(app, m)
+
+
+def hot_load_module(app: FastAPI, module_id: str) -> bool:
+    """Register a module's routers at runtime (called on enable/install) so it
+    works immediately — no API restart. No-op if already loaded this process.
+    FastAPI matches routes per-request, so a runtime include_router takes effect
+    at once. Removing routes on disable isn't supported, so a disabled module's
+    routes just go dormant (the UI gates it off) until the next restart."""
+    if module_id in _LOADED_ROUTERS:
+        return True
+    m = next((x for x in discover_modules() if x["id"] == module_id), None)
+    if not m:
+        return False
+    _load_one(app, m)
+    app.openapi_schema = None   # regenerate the schema with the new routes
+    return True
 
 
 # ── public api ────────────────────────────────────────────────────────────────
