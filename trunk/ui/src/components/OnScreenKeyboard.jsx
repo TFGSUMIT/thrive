@@ -178,7 +178,7 @@ export default function OnScreenKeyboard() {
     const id = label + (opts.k || '')
     return (
       <button key={id}
-        style={{ ...keyStyle(opts.flex, opts.accent), ...(pressed === id ? PRESSED : null) }}
+        style={{ ...keyStyle(opts.flex, opts.accent), ...(opts.style || {}), ...(pressed === id ? PRESSED : null) }}
         onPointerDown={(e) => { e.preventDefault(); flash(id); const el = targetRef.current; if (el) fn(el) }}>
         {label}
       </button>
@@ -215,20 +215,38 @@ export default function OnScreenKeyboard() {
       onPointerDown={(e) => e.preventDefault()}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         {page === 'nav' ? (
-          <>
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              {'1234567890'.split('').map(d => key(d, (el) => insertText(el, d), { k: d }))}
+          <div style={{ display: 'flex', gap: 'clamp(20px, 5vw, 72px)', justifyContent: 'center', alignItems: 'center', padding: '4px 0' }}>
+            {/* numbers stacked like a keypad — 9 down to 1, then a wide pill zero */}
+            <div style={{ flex: '0 1 340px', maxWidth: 340 }}>
+              {[['7', '8', '9'], ['4', '5', '6'], ['1', '2', '3']].map((r, ri) => (
+                <div key={ri} style={{ display: 'flex' }}>
+                  {r.map(d => key(d, (el) => insertText(el, d), { k: d }))}
+                </div>
+              ))}
+              <div style={{ display: 'flex' }}>
+                {key('0', (el) => insertText(el, '0'), { k: 'zero', style: { borderRadius: 999, letterSpacing: '0.2em' } })}
+              </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '0 4%' }}>
-              {key('Home', (el) => setCaretPos(el, 0), { flex: 1.6, accent: true, k: 'home' })}
-              {key('←', (el) => charMove(el, -1), { flex: 1.2, accent: true, k: 'aL' })}
-              {key('↑', (el) => lineMove(el, -1), { flex: 1.2, accent: true, k: 'aU' })}
-              {key('↓', (el) => lineMove(el, 1),  { flex: 1.2, accent: true, k: 'aD' })}
-              {key('→', (el) => charMove(el, 1),  { flex: 1.2, accent: true, k: 'aR' })}
-              {key('End', (el) => setCaretPos(el, el.value.length), { flex: 1.6, accent: true, k: 'end' })}
-              {key('⌫', backspace, { flex: 1.4, accent: true, k: 'bsp2' })}
+            {/* a directional cross — arrows sit where they point (↑ top, ←·→ sides,
+                ↓ bottom), backspace dead-centre, Home/End tucked in the corners */}
+            <div style={{ flex: '0 1 320px', maxWidth: 320 }}>
+              <div style={{ display: 'flex' }}>
+                {key('Hm', (el) => setCaretPos(el, 0), { accent: true, k: 'home', style: { fontSize: 'clamp(14px,2.4vh,22px)' } })}
+                {key('↑', (el) => lineMove(el, -1), { accent: true, k: 'aU' })}
+                {key('End', (el) => setCaretPos(el, el.value.length), { accent: true, k: 'end', style: { fontSize: 'clamp(13px,2.2vh,20px)' } })}
+              </div>
+              <div style={{ display: 'flex' }}>
+                {key('←', (el) => charMove(el, -1), { accent: true, k: 'aL' })}
+                {key('⌫', backspace, { k: 'bsp2' })}
+                {key('→', (el) => charMove(el, 1), { accent: true, k: 'aR' })}
+              </div>
+              <div style={{ display: 'flex' }}>
+                <div style={{ flex: 1, margin: 4 }} />
+                {key('↓', (el) => lineMove(el, 1), { accent: true, k: 'aD' })}
+                <div style={{ flex: 1, margin: 4 }} />
+              </div>
             </div>
-          </>
+          </div>
         ) : (
           rows.map((row, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'center', padding: i === 1 ? '0 5%' : 0 }}>
