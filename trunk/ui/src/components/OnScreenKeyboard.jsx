@@ -201,9 +201,9 @@ export default function OnScreenKeyboard() {
   }
 
   const rows = page === 'sym' ? ROWS_SYM : ROWS_LOWER
-  // page cycle: letters → numbers+arrows → symbols → letters (arrows one tap from text)
-  const NEXT_PAGE  = { abc: 'nav', nav: 'sym', sym: 'abc' }
-  const PAGE_LABEL = { abc: '123', nav: '#+=', sym: 'abc' }
+  // page cycle: letters → symbols → numbers+arrows → letters
+  const NEXT_PAGE  = { abc: 'sym', sym: 'nav', nav: 'abc' }
+  const PAGE_LABEL = { abc: '#+=', sym: '123', nav: 'abc' }
 
   return (
     <div ref={panelRef} style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 1000,
