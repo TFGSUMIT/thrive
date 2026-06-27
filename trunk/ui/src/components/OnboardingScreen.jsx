@@ -30,6 +30,7 @@ function Header({ sub }) {
 export default function OnboardingScreen() {
   const { register, configureClient } = useAuth()
   const [mode, setMode] = useState(null)        // null | 'host' | 'client'
+  const [name,     setName]     = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirm,  setConfirm]  = useState('')
@@ -39,11 +40,11 @@ export default function OnboardingScreen() {
 
   const submitHost = async () => {
     setErr(null)
-    if (!username || !password) return setErr('Username and master password required')
+    if (!name || !username || !password) return setErr('Name, username and master password required')
     if (password.length < 8)    return setErr('Master password must be at least 8 characters')
     if (password !== confirm)   return setErr('Passwords do not match')
     setBusy(true)
-    try { await register({ username, password }) }
+    try { await register({ name, username, password }) }
     catch (e) { setErr(e.message || 'Setup failed') } finally { setBusy(false) }
   }
   const submitClient = async () => {
@@ -72,21 +73,23 @@ export default function OnboardingScreen() {
         {mode === null && (<>
           <Header sub="Set up this screen" />
           <div style={{ display: 'flex', gap: 12 }}>
-            {choiceCard('🌳', 'Host', 'This box runs thrive — the household data lives here. Set a master password.', () => { setErr(null); setMode('host') })}
+            {choiceCard('🌳', 'Host', 'This box runs thrive — the household data lives here. Create the Head of Household.', () => { setErr(null); setMode('host') })}
             {choiceCard('🪟', 'Client', "A screen for another thrive Host. Point it at the Host's address.", () => { setErr(null); setMode('client') })}
           </div>
         </>)}
 
         {mode === 'host' && (<>
-          <Header sub="Host — create the master account" />
+          <Header sub="Host — create the Head of Household" />
+          <label style={lbl}>Name</label>
+          <input style={inp} value={name} autoFocus onChange={e => setName(e.target.value)} placeholder="e.g. Alex" />
           <label style={lbl}>Username</label>
-          <input style={inp} value={username} autoFocus autoComplete="username" onChange={e => setUsername(e.target.value)} />
+          <input style={inp} value={username} autoComplete="username" onChange={e => setUsername(e.target.value)} />
           <label style={lbl}>Master password</label>
           <PasswordInput style={{ ...inp, marginBottom: 0 }} wrapStyle={{ marginBottom: 12 }} value={password} autoComplete="new-password" onChange={e => setPassword(e.target.value)} />
           <label style={lbl}>Confirm password</label>
           <PasswordInput style={{ ...inp, marginBottom: 0 }} wrapStyle={{ marginBottom: 12 }} value={confirm} autoComplete="new-password" onChange={e => setConfirm(e.target.value)} onKeyDown={e => e.key === 'Enter' && submitHost()} />
           {err && <Err msg={err} />}
-          <button style={{ ...btn, opacity: busy ? .5 : 1 }} disabled={busy} onClick={submitHost}>{busy ? '…' : 'Create & run as Host'}</button>
+          <button style={{ ...btn, opacity: busy ? .5 : 1 }} disabled={busy} onClick={submitHost}>{busy ? '…' : 'Create Head of Household'}</button>
           <button style={ghost} onClick={() => { setMode(null); setErr(null) }}>← Back</button>
         </>)}
 

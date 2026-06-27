@@ -133,6 +133,11 @@ def init_db():
         acct_cols = [c["name"] for c in conn.execute("PRAGMA table_info(accounts)").fetchall()]
         if "prefs" not in acct_cols:
             conn.execute("ALTER TABLE accounts ADD COLUMN prefs TEXT DEFAULT '{}'")
+        # Head of Household — the household's primary login (exactly one account).
+        # A flag layered on top of admin, so existing role gating is untouched; it's
+        # reassignable from Settings → Accounts. Existing DBs start with none set.
+        if "is_head" not in acct_cols:
+            conn.execute("ALTER TABLE accounts ADD COLUMN is_head INTEGER DEFAULT 0")
         conn.commit()
     finally:
         conn.close()
@@ -172,14 +177,14 @@ def _account_payload(row) -> dict:
     except Exception:
         prefs = {}
     return {"id": row["id"], "username": row["username"], "email": row["email"],
-            "role": row["role"], "profile": profile, "prefs": prefs}
+            "role": row["role"], "is_head": bool(row["is_head"]), "profile": profile, "prefs": prefs}
 
 def _household_payload() -> dict:
     """The no-login shared 'Household' identity (a session with NULL account_id):
     sees only household/shared data (profile None → household scope) and fails admin
     checks (role != 'admin')."""
     return {"id": None, "username": "household", "email": None,
-            "role": "household", "profile": None, "prefs": {}}
+            "role": "household", "is_head": False, "profile": None, "prefs": {}}
 
 def user_from_token(token: Optional[str]) -> Optional[dict]:
     if not token: return None
@@ -193,7 +198,7 @@ def user_from_token(token: Optional[str]) -> Optional[dict]:
         if s["account_id"] is None:
             return _household_payload()                 # household guest session
         row = conn.execute(
-            """SELECT a.id, a.username, a.email, a.role, a.disabled, a.prefs,
+            """SELECT a.id, a.username, a.email, a.role, a.disabled, a.prefs, a.is_head,
                       u.id AS profile_id, u.name AS profile_name,
                       u.avatar AS profile_avatar, u.color AS profile_color
                FROM accounts a LEFT JOIN users u ON u.id = a.user_id WHERE a.id = ?""",
@@ -254,6 +259,7 @@ def _set_cookie(response: Response, token: str):
 class RegisterBody(BaseModel):
     username: str
     password: str
+    name:     Optional[str] = None
     email:    Optional[str] = None
     role:     Optional[str] = None
 
@@ -285,8 +291,9 @@ def status():
 
 @router.post("/register", status_code=201)
 def register(body: RegisterBody, response: Response):
-    """First-run owner bootstrap only. Creates the first admin account plus a
-    matching profile and links them. Once an account exists this returns 403 —
+    """First-run owner bootstrap only. Creates the first admin account as the
+    Head of Household, plus a profile (named from `name`, falling back to the
+    username) and links them. Once an account exists this returns 403 —
     additional accounts are created in Settings, profiles in the users module."""
     if not body.username or not body.password:
         raise HTTPException(status_code=400, detail="Username and password required")
@@ -296,9 +303,11 @@ def register(body: RegisterBody, response: Response):
     try:
         if _count_accounts(conn) != 0:
             raise HTTPException(status_code=403, detail="Registration is closed — add accounts in Settings")
-        profile = conn.execute("INSERT INTO users (name) VALUES (?)", (body.username,))
+        profile_name = (body.name or "").strip() or body.username
+        profile = conn.execute("INSERT INTO users (name) VALUES (?)", (profile_name,))
         acct = conn.execute(
-            "INSERT INTO accounts (username, email, password_hash, role, user_id) VALUES (?,?,?,'admin',?)",
+            "INSERT INTO accounts (username, email, password_hash, role, user_id, is_head) "
+            "VALUES (?,?,?,'admin',?,1)",
             (body.username, body.email, hash_password(body.password), profile.lastrowid)
         )
         set_config(conn, "role", "host")   # completing owner setup makes this box the Host
@@ -383,7 +392,7 @@ def list_profiles(request: Request):
     conn = get_db()
     try:
         return [dict(r) for r in conn.execute(
-            """SELECT u.id, u.name, u.avatar, u.color, a.username AS account
+            """SELECT u.id, u.name, u.avatar, u.color, a.username AS account, a.is_head AS is_head
                FROM users u LEFT JOIN accounts a ON a.user_id = u.id ORDER BY u.id"""
         ).fetchall()]
     finally:

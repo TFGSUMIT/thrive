@@ -332,6 +332,7 @@ function AccountsSection() {
   const changeRole    = async (id, role)     => { try { await api.patch(`/accounts/${id}/role`,     { role });     load() } catch (e) { setErr(e.message) } }
   const toggleDisable = async (id, disabled) => { try { await api.patch(`/accounts/${id}/disabled`, { disabled }); load() } catch (e) { setErr(e.message) } }
   const linkUser      = async (id, user_id)  => { try { await api.patch(`/accounts/${id}/user`,     { user_id: user_id ? Number(user_id) : null }); load() } catch (e) { setErr(e.message) } }
+  const makeHead      = async (id)           => { try { await api.patch(`/accounts/${id}/head`, {}); load() } catch (e) { setErr(e.message) } }
   const doReset       = async (id)           => { const pw = resetPw[id] || ''; if (pw.length < 8) { setErr('Min 8 chars'); return }; try { await api.patch(`/accounts/${id}/password`, { password: pw }); setResetPw(p => ({ ...p, [id]: '' })); setRow(id, { resetting: false }) } catch (e) { setErr(e.message) } }
   const doDelete      = async (id)           => { try { await api.del(`/accounts/${id}`); load() } catch (e) { setErr(e.message) } }
 
@@ -374,8 +375,10 @@ function AccountsSection() {
       {accounts.map((a, i) => {
         const ui = rowUi[a.id] || {}
         const isSelf = user && a.id === user.id
+        const isHead = !!a.is_head
         const activeAdmins = accounts.filter(x => x.role === 'admin' && !x.disabled).length
         const isLastAdmin = a.role === 'admin' && !a.disabled && activeAdmins <= 1
+        const locked = isLastAdmin || isHead   // can't demote/disable the last admin or the Head
         return (
           <div key={a.id} style={{ padding: '12px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--border-color,#2a2a2a)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -383,6 +386,7 @@ function AccountsSection() {
                 {isSelf && <span title="signed in" style={{ marginRight: 4 }}>🔑</span>}
                 <span style={{ fontSize: 13, fontWeight: 500, marginRight: 8 }}>{a.username}</span>
                 <Badge kind={a.role} />
+                {isHead && <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, background: 'var(--accent-muted)', color: 'var(--accent)', marginLeft: 6, letterSpacing: '0.04em', textTransform: 'uppercase', fontWeight: 600 }}>👑 Head of Household</span>}
                 {a.disabled ? <> <Badge kind="disabled" /></> : null}
                 {isSelf && <span style={{ fontSize: 10, color: 'var(--text-tertiary,#666)', marginLeft: 6 }}>(you)</span>}
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary,#888)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -395,16 +399,17 @@ function AccountsSection() {
               </div>
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                 {isSelf && <button style={{ ...btnS, padding: '3px 9px', fontSize: 10 }} onClick={logout}>Sign out</button>}
-                <button style={{ ...btnS, padding: '3px 9px', fontSize: 10, opacity: isLastAdmin ? 0.4 : 1, cursor: isLastAdmin ? 'not-allowed' : 'pointer' }}
-                  disabled={isLastAdmin} title={isLastAdmin ? "Can't remove the last admin" : ''}
+                {!isHead && !a.disabled && <button style={{ ...btnS, padding: '3px 9px', fontSize: 10 }} title="Make this the household's primary login (Head of Household)" onClick={() => makeHead(a.id)}>Make Head</button>}
+                <button style={{ ...btnS, padding: '3px 9px', fontSize: 10, opacity: locked ? 0.4 : 1, cursor: locked ? 'not-allowed' : 'pointer' }}
+                  disabled={locked} title={isHead ? 'Reassign Head of Household first' : (isLastAdmin ? "Can't remove the last admin" : '')}
                   onClick={() => changeRole(a.id, a.role === 'admin' ? 'member' : 'admin')}>{a.role === 'admin' ? 'Make member' : 'Make admin'}</button>
-                <button style={{ ...btnS, padding: '3px 9px', fontSize: 10, opacity: isLastAdmin ? 0.4 : 1, cursor: isLastAdmin ? 'not-allowed' : 'pointer' }}
-                  disabled={isLastAdmin} title={isLastAdmin ? "Can't disable the last admin" : ''}
+                <button style={{ ...btnS, padding: '3px 9px', fontSize: 10, opacity: locked ? 0.4 : 1, cursor: locked ? 'not-allowed' : 'pointer' }}
+                  disabled={locked} title={isHead ? "Can't disable the Head of Household" : (isLastAdmin ? "Can't disable the last admin" : '')}
                   onClick={() => toggleDisable(a.id, !a.disabled)}>{a.disabled ? 'Enable' : 'Disable'}</button>
                 <button style={{ ...btnS, padding: '3px 9px', fontSize: 10 }} onClick={() => setRow(a.id, { resetting: !ui.resetting })}>Reset pw</button>
-                {ui.confirmDelete
+                {!isHead && (ui.confirmDelete
                   ? <><button style={{ ...btnS, padding: '3px 9px', fontSize: 10, color: 'var(--color-danger,#ef4444)', borderColor: 'var(--color-danger,#ef4444)' }} onClick={() => doDelete(a.id)}>Confirm</button><button style={{ ...btnS, padding: '3px 9px', fontSize: 10 }} onClick={() => setRow(a.id, { confirmDelete: false })}>No</button></>
-                  : <button style={{ ...btnS, padding: '3px 9px', fontSize: 10, color: 'var(--color-danger,#ef4444)', borderColor: 'transparent' }} onClick={() => setRow(a.id, { confirmDelete: true })}>Delete</button>}
+                  : <button style={{ ...btnS, padding: '3px 9px', fontSize: 10, color: 'var(--color-danger,#ef4444)', borderColor: 'transparent' }} onClick={() => setRow(a.id, { confirmDelete: true })}>Delete</button>)}
               </div>
             </div>
             {ui.resetting && (
