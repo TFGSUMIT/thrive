@@ -20,8 +20,11 @@ function Face({ p, onClick }) {
   const initial = (p.name || '?').trim().charAt(0).toUpperCase()
   return (
     <button onClick={onClick} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: 100 }}>
-      <div style={{ width: 76, height: 76, borderRadius: '50%', background: p.color || 'var(--bg-tertiary,#222)', border: '1px solid var(--border-color,#333)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, color: '#0f0f0f' }}>
-        {p.avatar || initial}
+      <div style={{ position: 'relative' }}>
+        <div style={{ width: 76, height: 76, borderRadius: '50%', background: p.color || 'var(--bg-tertiary,#222)', border: p.is_head ? '2px solid var(--accent)' : '1px solid var(--border-color,#333)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, color: '#0f0f0f' }}>
+          {p.avatar || initial}
+        </div>
+        {p.is_head && <span title="Head of Household" style={{ position: 'absolute', top: -10, right: -6, fontSize: 22, transform: 'rotate(18deg)' }}>👑</span>}
       </div>
       <div style={{ fontSize: 12, color: 'var(--text-secondary,#ccc)' }}>{p.name}</div>
     </button>
@@ -72,10 +75,13 @@ export default function ProfilePicker({ onClose }) {
 
       {sel && (<div style={{ width: '100%', maxWidth: 320 }}>
         <div style={{ textAlign: 'center', marginBottom: 18 }}>
-          <div style={{ width: 76, height: 76, borderRadius: '50%', margin: '0 auto 10px', background: sel.color || 'var(--bg-tertiary,#222)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, color: '#0f0f0f' }}>
-            {sel.avatar || (sel.name || '?').charAt(0).toUpperCase()}
+          <div style={{ position: 'relative', width: 76, height: 76, margin: '0 auto 10px' }}>
+            <div style={{ width: 76, height: 76, borderRadius: '50%', background: sel.color || 'var(--bg-tertiary,#222)', border: sel.is_head ? '2px solid var(--accent)' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, color: '#0f0f0f' }}>
+              {sel.avatar || (sel.name || '?').charAt(0).toUpperCase()}
+            </div>
+            {sel.is_head && <span title="Head of Household" style={{ position: 'absolute', top: -10, right: -6, fontSize: 22, transform: 'rotate(18deg)' }}>👑</span>}
           </div>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>{sel.name}</div>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>{sel.name}{sel.is_head && <span title="Head of Household" style={{ marginLeft: 6 }}>👑</span>}</div>
           <div style={{ fontSize: 11, color: 'var(--text-tertiary,#666)', marginTop: 2 }}>@{sel.account}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>

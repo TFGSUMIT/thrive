@@ -392,7 +392,7 @@ def list_profiles(request: Request):
     conn = get_db()
     try:
         return [dict(r) for r in conn.execute(
-            """SELECT u.id, u.name, u.avatar, u.color, a.username AS account
+            """SELECT u.id, u.name, u.avatar, u.color, a.username AS account, a.is_head AS is_head
                FROM users u LEFT JOIN accounts a ON a.user_id = u.id ORDER BY u.id"""
         ).fetchall()]
     finally:
