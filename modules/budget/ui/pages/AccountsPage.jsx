@@ -8,6 +8,7 @@ import { api } from '@trunk/api'
 import { useToast } from '@trunk/context/ToastContext'
 import { useConfirm } from '@trunk/context/ConfirmModal'
 import { useAuth } from '@trunk/context/AuthContext'
+import { useVault } from '@trunk/context/VaultContext'
 import { decryptEncString, loadVaultSymKey } from '@trunk/utils/vault'
 import ScopeToggle from '@trunk/components/ScopeToggle'
 import './Page.css'
@@ -27,6 +28,7 @@ export default function AccountsPage({ onNav, vaultToken }) {
     const { showToast } = useToast()
     const { confirm } = useConfirm()
     const { user } = useAuth()
+    const { vaultFetch } = useVault()   // clears the token on 401 → no stale "Connected"
 
     const [accounts, setAccounts] = useState([])
     const [loading, setLoading] = useState(true)
@@ -84,13 +86,10 @@ export default function AccountsPage({ onNav, vaultToken }) {
     useEffect(() => {
         if (!vaultToken) { setCiphers([]); return }
         setCiphersLoading(true)
-        fetch('/vault/api/ciphers', {
-            headers: { Authorization: `Bearer ${vaultToken}` },
-        })
-            .then(r => {
-                if (!r.ok) throw new Error(`Vault ${r.status}`)
-                return r.json()
-            })
+        // vaultFetch clears the token on 401, so an expired session flips the
+        // whole app to "disconnected" (and this effect re-runs → empties ciphers)
+        // instead of erroring while Settings still shows "Connected".
+        vaultFetch('/ciphers')
             .then(async data => {
                 const list = Array.isArray(data) ? data : (data.data ?? [])
                 const symKey = loadVaultSymKey()
@@ -106,9 +105,9 @@ export default function AccountsPage({ onNav, vaultToken }) {
                     setCiphers(list.map(c => ({ ...c, _name: c.id })))
                 }
             })
-            .catch(e => showToast(`Vault ciphers: ${e.message}`, 'error'))
+            .catch(e => showToast(e.message, 'error'))
             .finally(() => setCiphersLoading(false))
-    }, [vaultToken])
+    }, [vaultToken, vaultFetch])
 
     async function handleLinkVault(accountId, cipherId) {
         setLinkingId(accountId)

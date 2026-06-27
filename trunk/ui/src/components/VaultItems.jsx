@@ -15,6 +15,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useToast } from '../context/ToastContext'
 import { useConfirm } from '../context/ConfirmModal'
 import { decryptEncString, encryptEncString, loadVaultSymKey } from '../utils/vault'
+import { useVault } from '../context/VaultContext'
 
 const CIPHER_LOGIN = 1
 
@@ -30,6 +31,9 @@ const EMPTY = { name: '', username: '', password: '', uri: '', notes: '', totp: 
 export default function VaultItems({ vaultToken }) {
   const { showToast } = useToast()
   const { confirm }   = useConfirm()
+  // shared helper: injects auth and, on 401 (expired session), clears the token
+  // app-wide so Settings/budget/this page all flip to "disconnected".
+  const { vaultFetch } = useVault()
   const [items,   setItems]   = useState([])      // decrypted-for-display logins (raw cipher kept on _raw)
   const [loading, setLoading] = useState(false)
   const [query,   setQuery]   = useState('')
@@ -37,21 +41,6 @@ export default function VaultItems({ vaultToken }) {
   const [form,    setForm]    = useState(EMPTY)
   const [showPw,  setShowPw]  = useState(false)
   const [busy,    setBusy]    = useState(false)
-
-  // Authenticated call into the proxied Vaultwarden API. 401 → stale session.
-  const vaultFetch = useCallback(async (path, opts = {}) => {
-    const res = await fetch(`/vault/api${path}`, {
-      ...opts,
-      headers: { Authorization: `Bearer ${vaultToken}`, ...(opts.body ? { 'Content-Type': 'application/json' } : {}), ...opts.headers },
-    })
-    if (res.status === 401) throw new Error('Vault session expired — reconnect above')
-    if (!res.ok) {
-      let msg = `Vault ${res.status}`
-      try { const d = await res.json(); msg = d.message || d.ErrorModel?.Message || msg } catch {}
-      throw new Error(msg)
-    }
-    return res.status === 204 ? null : res.json()
-  }, [vaultToken])
 
   const load = useCallback(async () => {
     if (!vaultToken) { setItems([]); return }
