@@ -49,7 +49,7 @@ def _active_admin_count(conn) -> int:
 
 def _row(conn, account_id: int):
     return conn.execute(
-        """SELECT a.id, a.username, a.email, a.role, a.disabled, a.user_id, a.created_at,
+        """SELECT a.id, a.username, a.email, a.role, a.disabled, a.user_id, a.is_head, a.created_at,
                   u.name AS user_name
            FROM accounts a LEFT JOIN users u ON u.id = a.user_id
            WHERE a.id = ?""", (account_id,)
@@ -63,7 +63,7 @@ def list_accounts(request: Request):
     conn = get_db()
     try:
         return [dict(r) for r in conn.execute(
-            """SELECT a.id, a.username, a.email, a.role, a.disabled, a.user_id, a.created_at,
+            """SELECT a.id, a.username, a.email, a.role, a.disabled, a.user_id, a.is_head, a.created_at,
                       u.name AS user_name
                FROM accounts a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.id"""
         ).fetchall()]
@@ -101,6 +101,8 @@ def set_role(account_id: int, body: RoleBody, request: Request):
     try:
         t = conn.execute("SELECT * FROM accounts WHERE id=?", (account_id,)).fetchone()
         if not t: raise HTTPException(status_code=404, detail="Account not found")
+        if body.role == "member" and t["is_head"]:
+            raise HTTPException(status_code=400, detail="Reassign Head of Household before demoting this account")
         if t["role"] == "admin" and body.role == "member" and _active_admin_count(conn) <= 1:
             raise HTTPException(status_code=400, detail="Can't remove the last admin")
         conn.execute("UPDATE accounts SET role=? WHERE id=?", (body.role, account_id)); conn.commit()
@@ -116,6 +118,8 @@ def set_disabled(account_id: int, body: DisabledBody, request: Request):
         t = conn.execute("SELECT * FROM accounts WHERE id=?", (account_id,)).fetchone()
         if not t: raise HTTPException(status_code=404, detail="Account not found")
         if body.disabled and t["id"] == actor["id"]: raise HTTPException(status_code=400, detail="Can't disable yourself")
+        if body.disabled and t["is_head"]:
+            raise HTTPException(status_code=400, detail="Can't disable the Head of Household — reassign it first")
         if body.disabled and t["role"] == "admin" and _active_admin_count(conn) <= 1:
             raise HTTPException(status_code=400, detail="Can't disable the last admin")
         conn.execute("UPDATE accounts SET disabled=? WHERE id=?", (1 if body.disabled else 0, account_id))
@@ -155,6 +159,24 @@ def link_user(account_id: int, body: LinkBody, request: Request):
     finally:
         conn.close()
 
+@router.patch("/{account_id}/head")
+def make_head(account_id: int, request: Request):
+    """Designate this account as the Head of Household — the household's primary
+    login. Promotes it to admin, sets is_head=1, and clears the flag from every
+    other account so there is exactly one Head at a time."""
+    _require_admin(request)
+    conn = get_db()
+    try:
+        t = conn.execute("SELECT * FROM accounts WHERE id=?", (account_id,)).fetchone()
+        if not t: raise HTTPException(status_code=404, detail="Account not found")
+        if t["disabled"]: raise HTTPException(status_code=400, detail="Enable the account before making it Head of Household")
+        conn.execute("UPDATE accounts SET is_head=0 WHERE is_head=1")
+        conn.execute("UPDATE accounts SET is_head=1, role='admin' WHERE id=?", (account_id,))
+        conn.commit()
+        return dict(_row(conn, account_id))
+    finally:
+        conn.close()
+
 @router.delete("/{account_id}", status_code=204)
 def delete_account(account_id: int, request: Request):
     actor = _require_admin(request)
@@ -163,6 +185,7 @@ def delete_account(account_id: int, request: Request):
         t = conn.execute("SELECT * FROM accounts WHERE id=?", (account_id,)).fetchone()
         if not t: raise HTTPException(status_code=404, detail="Account not found")
         if t["id"] == actor["id"]: raise HTTPException(status_code=400, detail="Can't delete yourself")
+        if t["is_head"]: raise HTTPException(status_code=400, detail="Can't delete the Head of Household — reassign it first")
         if t["role"] == "admin" and conn.execute("SELECT COUNT(*) AS n FROM accounts WHERE role='admin'").fetchone()["n"] <= 1:
             raise HTTPException(status_code=400, detail="Can't delete the last admin")
         conn.execute("DELETE FROM accounts WHERE id=?", (account_id,)); conn.commit()
