@@ -15,7 +15,9 @@ async function request(path, options = {}) {
       window.dispatchEvent(new CustomEvent('thrive:unauthorized'))
   }
   if (!res.ok) {
-    let detail = res.statusText
+    // HTTP/2 (e.g. behind Cloudflare) has no reason phrase, so res.statusText is ''.
+    // Fall back to the status code so errors never surface as a blank message.
+    let detail = res.statusText || `Request failed (${res.status})`
     try { const b = await res.json(); detail = b.detail || detail } catch {}
     throw new Error(detail)
   }
