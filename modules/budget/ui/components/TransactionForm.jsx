@@ -8,6 +8,24 @@ import { api } from '@trunk/api'
 import { todayStr, fmtMoney } from '../utils/constants'
 import { CreatablePayeeSelect, CreatableCategorySelect } from './CreatableSelect'
 
+// Status picker styles — checkbox-style chips, single-select (radio behavior)
+const STATUS_ROW  = { display: 'flex', gap: 8, flexWrap: 'wrap', flex: 1 }
+const statusChip  = (on, disabled) => ({
+  display: 'flex', alignItems: 'center', gap: 7, userSelect: 'none',
+  cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.55 : 1,
+  fontSize: 13, padding: '7px 12px', borderRadius: 6,
+  border: `1px solid ${on ? 'var(--accent, #7c8cff)' : 'var(--border, #333)'}`,
+  background: on ? 'var(--accent-dim, rgba(124,140,255,0.14))' : 'transparent',
+  color: on ? 'var(--accent, #7c8cff)' : 'inherit',
+})
+const statusBox = (on) => ({
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  width: 16, height: 16, borderRadius: 4, fontSize: 11, lineHeight: 1, flexShrink: 0,
+  border: `1px solid ${on ? 'var(--accent, #7c8cff)' : 'var(--border, #555)'}`,
+  background: on ? 'var(--accent, #7c8cff)' : 'transparent',
+  color: on ? 'var(--bg-primary, #0f0f0f)' : 'transparent',
+})
+
 // ---------------------------------------------------------------------------
 // SplitEditor — inline split row editor
 // ---------------------------------------------------------------------------
@@ -332,13 +350,20 @@ export default function TransactionForm({
             <div className="form-row">
                 <label>Status</label>
                 {isExistingUnverified ? (
-                    <select className="input" disabled style={{ opacity: 0.5 }}><option>Unverified</option></select>
+                    <div style={STATUS_ROW}>
+                        <span style={statusChip(true, true)}><span style={statusBox(true)}>✓</span> Unverified</span>
+                    </div>
                 ) : (
-                    <select className="input" value={cleared} onChange={e => setCleared(e.target.value)}>
-                        <option value="">Uncleared</option>
-                        <option value="Cleared">Cleared</option>
-                        <option value="Reconciled">Reconciled</option>
-                    </select>
+                    <div style={STATUS_ROW}>
+                        {[['', 'Uncleared'], ['Cleared', 'Cleared'], ['Reconciled', 'Reconciled']].map(([val, label]) => {
+                            const on = cleared === val
+                            return (
+                                <label key={label} style={statusChip(on)} onClick={() => setCleared(val)}>
+                                    <span style={statusBox(on)}>{on ? '✓' : ''}</span> {label}
+                                </label>
+                            )
+                        })}
+                    </div>
                 )}
             </div>
             <div className="form-actions">
