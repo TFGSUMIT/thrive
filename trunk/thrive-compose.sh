@@ -21,6 +21,9 @@ here="$(cd "$(dirname "$0")" && pwd)"
 # drop loopback, docker bridges (172.16–31), and link-local, take the first left.
 # (`ip` isn't present on the minimal appliance image, so we don't rely on it.)
 export HOST_LAN_IP="${HOST_LAN_IP:-$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -vE '^(127\.|169\.254\.|172\.(1[6-9]|2[0-9]|3[01])\.)' | head -1)}"
+# the host's name (e.g. "nerfwall") so /system/info reports it instead of the
+# container's hash — set as the api container's hostname (see docker-compose.yml).
+export HOST_NAME="${HOST_NAME:-$(hostname)}"
 
 files=(-f "$here/docker-compose.yml")
 for c in "$here"/../modules/*/compose.yml; do

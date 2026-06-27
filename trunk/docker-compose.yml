@@ -12,6 +12,9 @@ services:
       context: ..
       dockerfile: trunk/api/Dockerfile
     container_name: thrive_api
+    # report the host's name at /system/info (socket.gethostname() in-container);
+    # HOST_NAME is injected by thrive-compose.sh. Falls back to 'thrive'.
+    hostname: ${HOST_NAME:-thrive}
     restart: unless-stopped
     volumes:
       - ./data:/data
