@@ -294,6 +294,7 @@ export default function TransactionsPage({ initial = {}, onBalanceChange }) {
         { id: p.id, label: p.name },
         ...childrenOf(p.id).map(ch => ({ id: ch.id, label: `${p.name}: ${ch.name}` })),
     ])
+    const accountOptions = accounts.map(a => ({ id: a.id, label: a.name + (a.number ? ` (${a.number})` : '') }))
 
     // chronological order is required for the running-balance column to be meaningful
     const chronological = sort === 'date' && dir === 'desc'
@@ -478,7 +479,7 @@ export default function TransactionsPage({ initial = {}, onBalanceChange }) {
                                 <TransactionRow
                                     key={t.id} t={t}
                                     showBalance={showBalanceCol} showAccount={!accountId}
-                                    categoryOptions={categoryOptions} payeeOptions={payeeOptions}
+                                    categoryOptions={categoryOptions} payeeOptions={payeeOptions} accountOptions={accountOptions}
                                     onPatch={handlePatch}
                                     selected={selected.has(t.id)}
                                     onSelect={() => toggleSelect(t.id)}

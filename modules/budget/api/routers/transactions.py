@@ -628,6 +628,14 @@ def update_transaction(transaction_id: int, body: TransactionUpdate, request: Re
         else:
             new_cleared = body.cleared
 
+    # newly converting a normal txn into a transfer? clear its category and (below)
+    # create the mirrored counterpart in the other account, exactly like POST does.
+    establishing_transfer = row["transfer_transaction_id"] is None and body.transfer_account_id is not None
+    if establishing_transfer:
+        new_cat_id = None
+        if new_transfer_account_id == new_account_id:
+            raise HTTPException(status_code=400, detail="Cannot transfer to the same account")
+
     db.execute(
         """UPDATE transactions
            SET account_id = ?, payee_id = ?, category_id = ?, transfer_account_id = ?,
@@ -645,6 +653,18 @@ def update_transaction(transaction_id: int, body: TransactionUpdate, request: Re
             (new_account_id, -new_cents, new_date, new_memo, new_cleared,
              row["transfer_transaction_id"])
         )
+
+    if establishing_transfer:
+        cur2 = db.execute(
+            """INSERT INTO transactions
+               (account_id, payee_id, category_id, transfer_account_id, amount_cents, date, memo, cleared)
+               VALUES (?, ?, NULL, ?, ?, ?, ?, ?)""",
+            (new_transfer_account_id, new_payee_id, new_account_id,
+             -new_cents, new_date, new_memo, new_cleared)
+        )
+        paired_id = cur2.lastrowid
+        db.execute("UPDATE transactions SET transfer_transaction_id = ? WHERE id = ?", (paired_id, transaction_id))
+        db.execute("UPDATE transactions SET transfer_transaction_id = ? WHERE id = ?", (transaction_id, paired_id))
 
     db.commit()
     return {"id": transaction_id}

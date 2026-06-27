@@ -15,7 +15,7 @@ import InlineCellEdit from './InlineCellEdit'
 export default function TransactionRow({
   t, showBalance, showAccount, selected, onSelect,
   onEdit, onDelete, onCycleStatus, onAccountClick, matchClass = '',
-  categoryOptions = [], payeeOptions = [], onPatch,
+  categoryOptions = [], payeeOptions = [], accountOptions = [], onPatch,
 }) {
   const [edit, setEdit] = useState(null)   // 'date' | 'payee' | 'category' | 'memo' | 'amount' | null
   const close = () => setEdit(null)
@@ -58,6 +58,10 @@ export default function TransactionRow({
     } else if (field === 'amount') {
       const n = parseFloat(raw)
       if (!isNaN(n) && n !== t.amount) fields = { amount: n }
+    } else if (field === 'transfer') {
+      // convert this row into a transfer (backend creates the paired txn + clears category)
+      const id = raw == null || raw === '' ? null : Number(raw)
+      if (id) fields = { transfer_account_id: id, category_id: null }
     }
     close()
     if (fields) onPatch?.(t.id, fields)
@@ -123,7 +127,7 @@ export default function TransactionRow({
 
       {/* Category */}
       {edit === 'category'
-        ? <span className="txn-category txn-editing"><InlineCellEdit kind="picker" value={t.category_id} options={categoryOptions} placeholder="Category…" onCommit={v => commit('category', v)} onCancel={close} /></span>
+        ? <span className="txn-category txn-editing"><InlineCellEdit kind="picker" value={t.category_id} options={categoryOptions} placeholder="Category…" accounts={accountOptions.filter(a => a.id !== t.account_id)} onTransfer={v => commit('transfer', v)} onCommit={v => commit('category', v)} onCancel={close} /></span>
         : <span className="txn-category txn-editable" title={editTitle} onClick={startEdit('category')}>{categoryDisplay}</span>}
 
       {/* Memo */}
