@@ -17,7 +17,7 @@ SESSION_DAYS  = int(os.environ.get("SESSION_DAYS", "30"))
 PBKDF2_ITERS  = 200_000
 
 PUBLIC_PATHS = {"/health", "/auth/status", "/auth/login", "/auth/logout", "/auth/register",
-                "/auth/household", "/auth/client-config"}
+                "/auth/household", "/auth/client-config", "/system/info"}
 
 
 # ── db ─────────────────────────────────────────────────────────────────────

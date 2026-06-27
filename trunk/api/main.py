@@ -3,6 +3,7 @@
 # Platform shell: auth gate + module loader.
 # Modules register their own routers via modules.py bootstrap.
 # =============================================================================
+import os, socket
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -109,6 +110,17 @@ def update_settings(request: Request, body: dict):
 @app.get("/health")
 def health():
     return {"status": "ok", "platform": "thrive"}
+
+# ── device/system info (public) ─────────────────────────────────────────────────
+@app.get("/system/info")
+def system_info():
+    """Public device info — surfaces this machine's LAN IP so you can find/SSH the
+    appliance (e.g. the wall kiosk). The container can't see the host's LAN IP, so
+    the compose wrapper (thrive-compose.sh) injects it as HOST_LAN_IP at `up`."""
+    return {
+        "hostname":  socket.gethostname(),
+        "device_ip": os.environ.get("HOST_LAN_IP") or None,
+    }
 
 # ── bootstrap modules on startup ──────────────────────────────────────────────
 @app.on_event("startup")

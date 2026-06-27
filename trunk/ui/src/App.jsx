@@ -347,6 +347,9 @@ export default function App() {
   useEffect(() => {
     const v = parseFloat(localStorage.getItem('thrive:uiAlpha'))
     if (!isNaN(v)) document.documentElement.style.setProperty('--ui-alpha', String(v))
+    // apply the saved UI scale (Settings → UI) — per-device zoom for the kiosk
+    const s = parseFloat(localStorage.getItem('thrive:uiScale'))
+    if (!isNaN(s) && s > 0) document.documentElement.style.zoom = String(s)
     // touch kiosk (e.g. the wall): hide the pointer — it's a touch panel. cage
     // (Wayland) draws a compositor cursor for the touchscreen's pointer interface
     // that `cursor:none` doesn't reliably reach, so use a 1x1 transparent cursor

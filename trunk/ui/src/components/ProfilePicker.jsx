@@ -14,6 +14,7 @@ const btn = { width: '100%', padding: 11, fontFamily: 'monospace', fontSize: 12,
 const ghost = { ...btn, marginTop: 8, background: 'none', border: '1px solid var(--border-color,#333)', color: 'var(--text-secondary,#aaa)' }
 const closeBtn = { position: 'absolute', top: 18, right: 22, background: 'none', border: 'none', color: 'var(--text-tertiary,#666)', fontSize: 22, cursor: 'pointer' }
 const eye = { background: 'var(--bg-tertiary,#222)', border: '1px solid var(--border-color,#333)', borderRadius: 6, cursor: 'pointer', padding: '9px 12px', color: 'var(--text-secondary,#aaa)', fontSize: 16, lineHeight: 1, flexShrink: 0 }
+const footer = { position: 'absolute', bottom: 14, left: 0, right: 0, textAlign: 'center', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-tertiary,#666)' }
 
 function Face({ p, onClick }) {
   const initial = (p.name || '?').trim().charAt(0).toUpperCase()
@@ -35,9 +36,11 @@ export default function ProfilePicker({ onClose }) {
   const [showPw, setShowPw] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
+  const [device, setDevice] = useState(null)
 
   useEffect(() => {
     api.get('/auth/profiles').then(list => setProfiles((list || []).filter(p => p.account))).catch(() => {})
+    api.get('/system/info').then(setDevice).catch(() => {})
   }, [])
 
   const pick = (p) => { setSel(p); setPassword(''); setShowPw(false); setErr(null) }
@@ -64,6 +67,8 @@ export default function ProfilePicker({ onClose }) {
         </div>
         <button style={{ ...ghost, width: 'auto', padding: '9px 22px', marginTop: 34 }} onClick={household}>Continue as Household</button>
       </>)}
+
+      {device?.device_ip && <div style={footer}>⌂ {device.device_ip}</div>}
 
       {sel && (<div style={{ width: '100%', maxWidth: 320 }}>
         <div style={{ textAlign: 'center', marginBottom: 18 }}>

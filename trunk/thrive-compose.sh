@@ -15,6 +15,11 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 
+# This host's primary LAN IP (source IP of the default route) — passed into the
+# api container so it can report the appliance's address at GET /system/info. A
+# bridged container only sees its own 172.x address, so we resolve it host-side.
+export HOST_LAN_IP="${HOST_LAN_IP:-$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')}"
+
 files=(-f "$here/docker-compose.yml")
 for c in "$here"/../modules/*/compose.yml; do
     [ -f "$c" ] && files+=(-f "$c")

@@ -130,6 +130,7 @@ function FrontPageSection() {
 }
 
 const UI_ALPHA_KEY = 'thrive:uiAlpha'
+const UI_SCALE_KEY = 'thrive:uiScale'
 
 function UISection() {
   const { user, updatePrefs } = useAuth()
@@ -154,6 +155,20 @@ function UISection() {
     try { localStorage.setItem(UI_ALPHA_KEY, String(v)) } catch {}
   }
 
+  const [scale, setScale] = useState(() => {
+    const v = parseFloat(localStorage.getItem(UI_SCALE_KEY))
+    return isNaN(v) || v <= 0 ? 1 : v
+  })
+  const applyScale = (v) => {
+    setScale(v)
+    document.documentElement.style.zoom = String(v)
+    try { localStorage.setItem(UI_SCALE_KEY, String(v)) } catch {}
+  }
+
+  // this device's LAN IP (public /system/info) — handy for finding/SSH-ing a kiosk
+  const [device, setDevice] = useState(null)
+  useEffect(() => { api.get('/system/info').then(setDevice).catch(() => {}) }, [])
+
   return (
     <div style={body}>
       <div style={lbl}>Theme</div>
@@ -172,6 +187,25 @@ function UISection() {
       <input type="range" min="0.3" max="1" step="0.01" value={alpha}
         title="Lower to let the background show through panels & nav."
         onChange={e => apply(parseFloat(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent)' }} />
+
+      <div style={{ ...lbl, display: 'flex', justifyContent: 'space-between', marginTop: 18 }}
+        title="Zoom the whole interface — handy on a wall/kiosk display.">
+        <span>UI scale</span>
+        <b style={{ color: 'var(--text-secondary,#aaa)' }}>{Math.round(scale * 100)}%</b>
+      </div>
+      <input type="range" min="0.5" max="2" step="0.05" value={scale}
+        title="Zoom the whole interface — handy on a wall/kiosk display."
+        onChange={e => applyScale(parseFloat(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent)' }} />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+        <button style={{ ...btnS, padding: '3px 9px', fontSize: 10 }} onClick={() => applyScale(1)}>Reset</button>
+      </div>
+
+      <div style={{ ...lbl, marginTop: 18 }}>This device</div>
+      <div style={{ fontSize: 13, fontFamily: 'monospace', color: 'var(--text-secondary,#aaa)' }}>
+        {device?.device_ip
+          ? <>{device.device_ip}{device.hostname ? <span style={{ color: 'var(--text-tertiary,#666)' }}> · {device.hostname}</span> : null}</>
+          : <span style={{ color: 'var(--text-tertiary,#666)' }}>IP unavailable</span>}
+      </div>
     </div>
   )
 }

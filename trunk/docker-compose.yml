@@ -22,6 +22,10 @@ services:
       - PYTHONUNBUFFERED=1     # flush print() immediately so [modules] logs aren't buffered
       - DB_FILE=/data/thrive.db
       - MODULES_DIR=/app/modules
+      # this host's LAN IP, injected by thrive-compose.sh at `up` (a bridged
+      # container can't see it) — surfaced at GET /system/info so the appliance
+      # (e.g. the wall kiosk) can show its own address. Re-set on each `up`.
+      - HOST_LAN_IP=${HOST_LAN_IP:-}
       - THRIVE_KEY_FILE=/keys/connections.key
       - COOKIE_SECURE=false   # http dev on :9500 — Secure cookies get dropped over http
       - SESSION_DAYS=30
