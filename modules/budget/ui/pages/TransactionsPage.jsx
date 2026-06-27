@@ -169,16 +169,23 @@ export default function TransactionsPage({ initial = {}, onBalanceChange }) {
     // Inline single-field edit from a row cell. Category/payee/memo update in place
     // (no scroll jump); amount/date affect ordering + running balance, so reload.
     async function handlePatch(id, fields) {
-        const affectsOrderOrBalance = 'amount' in fields || 'date' in fields
-        if (!affectsOrderOrBalance) {
+        // transfers create a paired row in the other account → reload to show it +
+        // the correct "Transfer:…" name; amount/date affect order/running balance.
+        const reloadsAfter = 'amount' in fields || 'date' in fields || 'transfer_account_id' in fields
+        if (!reloadsAfter) {
             const extra = {}
-            if ('category_id' in fields) extra.category_name = categories.find(c => c.id === fields.category_id)?.name ?? null
+            if ('category_id' in fields) {
+                // match the backend's "Parent:Sub" display name (was only showing the leaf)
+                const cat = categories.find(c => c.id === fields.category_id)
+                const par = cat && cat.parent_id ? categories.find(c => c.id === cat.parent_id) : null
+                extra.category_name = cat ? (par ? `${par.name}:${cat.name}` : cat.name) : null
+            }
             if ('payee_id' in fields) extra.payee_name = payees.find(p => p.id === fields.payee_id)?.name ?? null
             setTransactions(prev => prev.map(t => (t.id === id ? { ...t, ...fields, ...extra } : t)))
         }
         try {
             await api.patch(`/transactions/${id}`, fields)
-            if (affectsOrderOrBalance) { reload(); loadLookups() }
+            if (reloadsAfter) { reload(); loadLookups() }
         } catch (e) {
             showToast(e.message, 'error')
             reload()   // revert the optimistic change
