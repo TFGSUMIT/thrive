@@ -298,62 +298,27 @@ export function CreatableCategorySelect({ categories, value, onChange, onCreated
 
     const hasSubs = mainId && subCategories.some(c => c.parent_id === parseInt(mainId))
 
-    // Transfer mode: this field IS an account picker (auto-opened on entry).
-    if (isTransfer) {
-        return (
-            <div className="creatable-category-wrap">
-                <div className="creatable-wrap" ref={acctRef}>
-                    <div className="creatable-input-row">
-                        <input
-                            className="input"
-                            type="text"
-                            autoFocus
-                            autoComplete="off"
-                            placeholder="⇄ Transfer to / from account…"
-                            value={acctQuery}
-                            onChange={e => { setAcctQuery(e.target.value); setAcctOpen(true) }}
-                            onFocus={() => setAcctOpen(true)}
-                        />
-                        <button type="button" className="creatable-clear" onClick={() => onExitTransfer?.()} tabIndex={-1}>✕</button>
-                    </div>
-                    {acctOpen && (
-                        <div className="creatable-dropdown">
-                            {filteredAccts.slice(0, 30).map(a => (
-                                <div
-                                    key={a.id}
-                                    className={`creatable-option ${String(a.id) === String(transferAccountId) ? 'creatable-option--selected' : ''}`}
-                                    onMouseDown={() => selectAccount(a)}
-                                >
-                                    {a.name}{a.number ? ` (${a.number})` : ''}
-                                </div>
-                            ))}
-                            {filteredAccts.length === 0 && <div className="creatable-empty">No other accounts</div>}
-                        </div>
-                    )}
-                </div>
-            </div>
-        )
-    }
-
     return (
         <div className="creatable-category-wrap">
-            {/* Main category */}
+            {/* Main category — shows "⇄ Transfer" as the value when in transfer mode */}
             <div className="creatable-wrap" ref={mainRef}>
                 <div className="creatable-input-row">
                     <input
                         className="input"
                         type="text"
                         placeholder="Category…"
-                        value={mainQuery}
+                        value={isTransfer ? '⇄ Transfer' : mainQuery}
+                        readOnly={isTransfer}
                         onChange={e => { setMainQuery(e.target.value); setMainOpen(true); if (!e.target.value) { setMainId(''); setSubId(''); onChange('') } }}
-                        onFocus={() => setMainOpen(true)}
+                        onFocus={() => { if (!isTransfer) setMainOpen(true) }}
                         autoComplete="off"
                     />
-                    {mainId && (
-                        <button type="button" className="creatable-clear" onClick={() => { setMainId(''); setMainQuery(''); setSubId(''); setSubQuery(''); onChange('') }} tabIndex={-1}>✕</button>
+                    {(isTransfer || mainId) && (
+                        <button type="button" className="creatable-clear" tabIndex={-1}
+                            onClick={() => { if (isTransfer) { onExitTransfer?.() } else { setMainId(''); setMainQuery(''); setSubId(''); setSubQuery(''); onChange('') } }}>✕</button>
                     )}
                 </div>
-                {mainOpen && (
+                {!isTransfer && mainOpen && (
                     <div className="creatable-dropdown">
                         {showTransferOption && (
                             <div className="creatable-option creatable-option--transfer" onMouseDown={() => onEnterTransfer?.()}>
@@ -381,8 +346,40 @@ export function CreatableCategorySelect({ categories, value, onChange, onCreated
                 )}
             </div>
 
+            {/* Sub slot — the account list when transferring, else the subcategory */}
+            {isTransfer && (
+                <div className="creatable-wrap" ref={acctRef}>
+                    <div className="creatable-input-row">
+                        <input
+                            className="input"
+                            type="text"
+                            autoFocus
+                            autoComplete="off"
+                            placeholder="Account…"
+                            value={acctQuery}
+                            onChange={e => { setAcctQuery(e.target.value); setAcctOpen(true) }}
+                            onFocus={() => setAcctOpen(true)}
+                        />
+                    </div>
+                    {acctOpen && (
+                        <div className="creatable-dropdown">
+                            {filteredAccts.slice(0, 30).map(a => (
+                                <div
+                                    key={a.id}
+                                    className={`creatable-option ${String(a.id) === String(transferAccountId) ? 'creatable-option--selected' : ''}`}
+                                    onMouseDown={() => selectAccount(a)}
+                                >
+                                    {a.name}{a.number ? ` (${a.number})` : ''}
+                                </div>
+                            ))}
+                            {filteredAccts.length === 0 && <div className="creatable-empty">No other accounts</div>}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Sub category — only shown when main is selected and has/can have subs */}
-            {mainId && (
+            {!isTransfer && mainId && (
                 <div className="creatable-wrap" ref={subRef}>
                     <div className="creatable-input-row">
                         <input
