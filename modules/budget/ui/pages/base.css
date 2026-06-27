@@ -383,6 +383,16 @@
     background: var(--accent-dim);
 }
 
+/* "⇄ Transfer" pinned at the top of the category list (YNAB-style) */
+.creatable-option--transfer {
+    color: var(--accent);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+}
+.creatable-option--transfer:hover {
+    background: var(--accent-dim);
+}
+
 .creatable-empty {
     padding: 8px 12px;
     font-size: 12px;

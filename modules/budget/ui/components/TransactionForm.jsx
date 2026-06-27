@@ -276,35 +276,21 @@ export default function TransactionForm({
                         {existing?.cleared === 'Unverified' && existing?.import_category && (
                             <span className="muted" style={{ fontSize: '11px' }}>Imported: {existing.import_category}</span>
                         )}
-                        {!isTransfer ? (
-                            <CreatableCategorySelect
-                                categories={categories}
-                                value={categoryId}
-                                onChange={setCategoryId}
-                                onCreated={onCategoryCreated}
-                                showToast={showToast}
-                            />
-                        ) : (
-                            <select className="input" value={transferAccountId} onChange={e => setTransferAccountId(e.target.value)}>
-                                <option value="">— select account —</option>
-                                {accounts.filter(a => a.id !== parseInt(accountId)).map(a => (
-                                    <option key={a.id} value={a.id}>{a.name}{a.number ? ` (${a.number})` : ''}</option>
-                                ))}
-                            </select>
-                        )}
+                        <CreatableCategorySelect
+                            categories={categories}
+                            value={categoryId}
+                            onChange={setCategoryId}
+                            onCreated={onCategoryCreated}
+                            showToast={showToast}
+                            accounts={accounts}
+                            currentAccountId={accountId}
+                            isTransfer={isTransfer}
+                            transferAccountId={transferAccountId}
+                            onEnterTransfer={() => { setCategoryId('transfer'); setTransferAccountId('') }}
+                            onExitTransfer={() => { setCategoryId(''); setTransferAccountId('') }}
+                            onTransferChange={setTransferAccountId}
+                        />
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                            {!isTransfer && (
-                                <button type="button" className="btn split-toggle-btn"
-                                    onClick={() => { setCategoryId('transfer'); setTransferAccountId('') }}>
-                                    ⇄ Transfer
-                                </button>
-                            )}
-                            {isTransfer && (
-                                <button type="button" className="btn split-toggle-btn"
-                                    onClick={() => { setCategoryId(''); setTransferAccountId('') }}>
-                                    ✕ Not a transfer
-                                </button>
-                            )}
                             {!isTransfer && (
                                 <button type="button" className="btn split-toggle-btn" onClick={enterSplitMode}>
                                     ⊕ Split transaction
