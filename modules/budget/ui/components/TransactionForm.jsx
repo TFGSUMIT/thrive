@@ -11,7 +11,7 @@ import { CreatablePayeeSelect, CreatableCategorySelect } from './CreatableSelect
 // Status picker styles — checkbox-style chips, single-select (radio behavior)
 const STATUS_ROW  = { display: 'flex', gap: 8, flexWrap: 'wrap', flex: 1 }
 const statusChip  = (on, disabled) => ({
-  display: 'flex', alignItems: 'center', gap: 7, userSelect: 'none',
+  display: 'flex', alignItems: 'center', gap: 7, userSelect: 'none', whiteSpace: 'nowrap',
   cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.55 : 1,
   fontSize: 13, padding: '7px 12px', borderRadius: 6,
   border: `1px solid ${on ? 'var(--accent, #7c8cff)' : 'var(--border, #333)'}`,
@@ -358,9 +358,9 @@ export default function TransactionForm({
                         {[['', 'Uncleared'], ['Cleared', 'Cleared'], ['Reconciled', 'Reconciled']].map(([val, label]) => {
                             const on = cleared === val
                             return (
-                                <label key={label} style={statusChip(on)} onClick={() => setCleared(val)}>
+                                <span key={label} role="button" style={statusChip(on)} onClick={() => setCleared(val)}>
                                     <span style={statusBox(on)}>{on ? '✓' : ''}</span> {label}
-                                </label>
+                                </span>
                             )
                         })}
                     </div>
