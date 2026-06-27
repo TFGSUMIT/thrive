@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '@trunk/api'
 import { useToast } from '@trunk/context/ToastContext'
 import { useConfirm } from '@trunk/context/ConfirmModal'
+import PasswordInput from '@trunk/components/PasswordInput'
 import { getWeekStart, setWeekStart as saveWeekStart, PREFS_EVENT } from './prefs'
 
 const ACCENT = '#f97316'   // module color
@@ -140,7 +141,7 @@ export default function CalendarPanel() {
               value={inputs[p.idKey] || ''} autoComplete="off"
               onChange={e => setInputs(i => ({ ...i, [p.idKey]: e.target.value }))}
               onBlur={() => saveCfg(p.idKey)} />
-            <input style={{ ...inp, flex: 1 }} type="password" placeholder={cfg[p.secretKey] ? 'client secret (set — paste to replace)' : 'client secret'}
+            <PasswordInput wrapStyle={{ flex: 1 }} style={inp} placeholder={cfg[p.secretKey] ? 'client secret (set — paste to replace)' : 'client secret'}
               value={inputs[p.secretKey] || ''} autoComplete="off"
               onChange={e => setInputs(i => ({ ...i, [p.secretKey]: e.target.value }))}
               onBlur={() => saveCfg(p.secretKey)} />

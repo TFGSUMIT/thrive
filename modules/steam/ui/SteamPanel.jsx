@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '@trunk/api'
 import { useToast } from '@trunk/context/ToastContext'
+import PasswordInput from '@trunk/components/PasswordInput'
 
 const ACCENT = '#66c0f4'   // module color
 
@@ -71,7 +72,7 @@ export default function SteamPanel() {
       {/* ── API key ── */}
       <label style={lbl}>Web API key {keySet && <span style={{ color: ACCENT, textTransform: 'none' }}>· set ({keyHint})</span>}</label>
       <div style={{ display: 'flex', gap: 6 }}>
-        <input style={{ ...inp, flex: 1 }} type="password" value={keyInput} autoComplete="off"
+        <PasswordInput wrapStyle={{ flex: 1 }} style={inp} value={keyInput} autoComplete="off"
           placeholder={keySet ? 'replace key…' : 'paste your Steam Web API key'}
           onChange={e => setKeyInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveKey()} />
         <button style={btnS} onClick={saveKey} disabled={busy || !keyInput.trim()}>Save</button>

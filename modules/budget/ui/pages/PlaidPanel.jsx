@@ -13,6 +13,7 @@
 // =============================================================================
 import { useState, useEffect } from 'react'
 import { api } from '@trunk/api'
+import PasswordInput from '@trunk/components/PasswordInput'
 import '../components/Settings.css'
 
 export default function PlaidPanel() {
@@ -130,7 +131,7 @@ export default function PlaidPanel() {
           </div>
           <div className="plaid-field">
             <label className="plaid-field-label">Secret{secretSet ? ' (set — leave blank to keep)' : ''}</label>
-            <input className="plaid-input" type="password" placeholder={secretSet ? '••••••••' : 'plaid secret'}
+            <PasswordInput className="plaid-input" placeholder={secretSet ? '••••••••' : 'plaid secret'}
               value={secret} onChange={e => setSecret(e.target.value)} />
           </div>
           <div className="plaid-field">
@@ -186,7 +187,7 @@ export default function PlaidPanel() {
             <div className="plaid-field">
               <label className="plaid-field-label">Access Token</label>
               <div className="plaid-token-row">
-                <input className="plaid-input" type="password" placeholder="access-production-…"
+                <PasswordInput className="plaid-input" wrapStyle={{ flex: 1 }} placeholder="access-production-…"
                   value={tokenInput}
                   onChange={e => { setTokenInput(e.target.value); setPlaidAccounts([]); setMappings({}) }} />
                 <button className="plaid-fetch-btn" onClick={handleFetchAccounts} disabled={fetchingAccts || !tokenInput.trim()}>

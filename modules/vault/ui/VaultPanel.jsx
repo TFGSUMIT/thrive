@@ -12,6 +12,7 @@ import {
   deriveMasterKey, deriveMasterPasswordHash, stretchMasterKey,
   decryptEncStringToBytes, saveVaultSymKey,
 } from '@trunk/utils/vault'
+import PasswordInput from '@trunk/components/PasswordInput'
 
 const VAULT_BASE = '/vault'
 
@@ -86,7 +87,7 @@ export default function VaultPanel() {
           </div>
           <div style={{ marginBottom: 20 }}>
             <label style={labelStyle}>Master password</label>
-            <input id="vault-pw" style={inputStyle} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === 'Enter' && connect()} />
+            <PasswordInput id="vault-pw" style={inputStyle} value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === 'Enter' && connect()} />
           </div>
           <button style={{ ...btnPrimary, opacity: connecting ? 0.5 : 1 }} onClick={connect} disabled={connecting}>
             {connecting ? 'Connecting…' : '🔑 Connect Vault'}

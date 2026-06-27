@@ -6,6 +6,7 @@
 // =============================================================================
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
+import PasswordInput from './PasswordInput'
 
 const wrap = { minHeight: 'calc(100vh - var(--osk-height, 0px))', transition: 'min-height 0.24s cubic-bezier(.2,.8,.2,1)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary,#0f0f0f)', padding: 20 }
 const card = { width: '100%', maxWidth: 440, background: 'var(--bg-secondary,#181818)', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 12, padding: 28 }
@@ -81,9 +82,9 @@ export default function OnboardingScreen() {
           <label style={lbl}>Username</label>
           <input style={inp} value={username} autoFocus autoComplete="username" onChange={e => setUsername(e.target.value)} />
           <label style={lbl}>Master password</label>
-          <input style={inp} type="password" value={password} autoComplete="new-password" onChange={e => setPassword(e.target.value)} />
+          <PasswordInput style={{ ...inp, marginBottom: 0 }} wrapStyle={{ marginBottom: 12 }} value={password} autoComplete="new-password" onChange={e => setPassword(e.target.value)} />
           <label style={lbl}>Confirm password</label>
-          <input style={inp} type="password" value={confirm} autoComplete="new-password" onChange={e => setConfirm(e.target.value)} onKeyDown={e => e.key === 'Enter' && submitHost()} />
+          <PasswordInput style={{ ...inp, marginBottom: 0 }} wrapStyle={{ marginBottom: 12 }} value={confirm} autoComplete="new-password" onChange={e => setConfirm(e.target.value)} onKeyDown={e => e.key === 'Enter' && submitHost()} />
           {err && <Err msg={err} />}
           <button style={{ ...btn, opacity: busy ? .5 : 1 }} disabled={busy} onClick={submitHost}>{busy ? '…' : 'Create & run as Host'}</button>
           <button style={ghost} onClick={() => { setMode(null); setErr(null) }}>← Back</button>
@@ -96,7 +97,7 @@ export default function OnboardingScreen() {
           <label style={lbl}>Username</label>
           <input style={inp} value={username} autoComplete="username" onChange={e => setUsername(e.target.value)} />
           <label style={lbl}>Password</label>
-          <input style={inp} type="password" value={password} autoComplete="current-password" onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && submitClient()} />
+          <PasswordInput style={{ ...inp, marginBottom: 0 }} wrapStyle={{ marginBottom: 12 }} value={password} autoComplete="current-password" onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && submitClient()} />
           {err && <Err msg={err} />}
           <button style={{ ...btn, opacity: busy ? .5 : 1 }} disabled={busy} onClick={submitClient}>{busy ? '…' : 'Save client config'}</button>
           <button style={ghost} onClick={() => { setMode(null); setErr(null) }}>← Back</button>
