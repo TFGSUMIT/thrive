@@ -50,16 +50,28 @@ function caret(el) {
   if (s == null || e == null) { s = e = el.value.length }   // number/email expose no selection
   return [s, e]
 }
+// Restore caret + horizontal scroll AFTER React re-commits the controlled input.
+// React reassigns the input's .value on the change it triggers, which resets
+// scrollLeft to 0 (and caret to end) — so without this the newest chars scroll
+// off the right edge and the field looks like it stopped accepting input. The
+// rAF runs after React's commit so our caret/scroll wins.
+function restoreCaret(el, pos) {
+  requestAnimationFrame(() => {
+    try { el.setSelectionRange(pos, pos) } catch {}
+    if (pos >= el.value.length) { try { el.scrollLeft = el.scrollWidth } catch {} }
+  })
+}
 function insertText(el, ch) {
   const [s, e] = caret(el)
+  const pos = s + ch.length
   setNativeValue(el, el.value.slice(0, s) + ch + el.value.slice(e))
-  try { el.setSelectionRange(s + ch.length, s + ch.length) } catch {}
+  restoreCaret(el, pos)
 }
 function backspace(el) {
   let [s, e] = caret(el)
   if (s === e && s > 0) s -= 1
   setNativeValue(el, el.value.slice(0, s) + el.value.slice(e))
-  try { el.setSelectionRange(s, s) } catch {}
+  restoreCaret(el, s)
 }
 function pressEnter(el) {
   for (const type of ['keydown', 'keyup'])
