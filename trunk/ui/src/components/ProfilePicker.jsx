@@ -13,6 +13,7 @@ const inp = { fontFamily: 'monospace', fontSize: 14, background: 'var(--bg-terti
 const btn = { width: '100%', padding: 11, fontFamily: 'monospace', fontSize: 12, letterSpacing: '0.12em', textTransform: 'uppercase', background: 'var(--text-primary,#e8e6e0)', border: 'none', borderRadius: 6, color: 'var(--bg-primary,#0f0f0f)', fontWeight: 600, cursor: 'pointer' }
 const ghost = { ...btn, marginTop: 8, background: 'none', border: '1px solid var(--border-color,#333)', color: 'var(--text-secondary,#aaa)' }
 const closeBtn = { position: 'absolute', top: 18, right: 22, background: 'none', border: 'none', color: 'var(--text-tertiary,#666)', fontSize: 22, cursor: 'pointer' }
+const eye = { background: 'var(--bg-tertiary,#222)', border: '1px solid var(--border-color,#333)', borderRadius: 6, cursor: 'pointer', padding: '9px 12px', color: 'var(--text-secondary,#aaa)', fontSize: 16, lineHeight: 1, flexShrink: 0 }
 
 function Face({ p, onClick }) {
   const initial = (p.name || '?').trim().charAt(0).toUpperCase()
@@ -31,6 +32,7 @@ export default function ProfilePicker({ onClose }) {
   const [profiles, setProfiles] = useState([])
   const [sel, setSel] = useState(null)        // a profile with a linked account
   const [password, setPassword] = useState('')
+  const [showPw, setShowPw] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
 
@@ -38,7 +40,7 @@ export default function ProfilePicker({ onClose }) {
     api.get('/auth/profiles').then(list => setProfiles((list || []).filter(p => p.account))).catch(() => {})
   }, [])
 
-  const pick = (p) => { setSel(p); setPassword(''); setErr(null) }
+  const pick = (p) => { setSel(p); setPassword(''); setShowPw(false); setErr(null) }
   const signIn = async () => {
     if (!password) return setErr('Password required')
     setBusy(true)
@@ -71,8 +73,14 @@ export default function ProfilePicker({ onClose }) {
           <div style={{ fontSize: 14, fontWeight: 700 }}>{sel.name}</div>
           <div style={{ fontSize: 11, color: 'var(--text-tertiary,#666)', marginTop: 2 }}>@{sel.account}</div>
         </div>
-        <input style={inp} type="password" autoFocus placeholder="Password" value={password}
-          onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && signIn()} autoComplete="current-password" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+          <input style={{ ...inp, marginBottom: 0, flex: 1, minWidth: 0 }}
+            type={showPw ? 'text' : 'password'} autoFocus placeholder="Password" value={password}
+            onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && signIn()} autoComplete="current-password" />
+          <button type="button" style={eye} onClick={() => setShowPw(s => !s)} tabIndex={-1} title={showPw ? 'Hide password' : 'Show password'}>
+            {showPw ? '🙈' : '👁'}
+          </button>
+        </div>
         {err && <div style={{ fontSize: 12, color: 'var(--color-danger,#ef4444)', marginBottom: 10 }}>{err}</div>}
         <button style={{ ...btn, opacity: busy ? .5 : 1 }} disabled={busy} onClick={signIn}>{busy ? '…' : 'Sign in'}</button>
         <button style={ghost} onClick={() => setSel(null)}>← Back</button>
