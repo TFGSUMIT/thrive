@@ -150,6 +150,8 @@ init_db()
 
 
 # ── password + session ───────────────────────────────────────────────────────
+PASSWORD_MIN = 18   # minimum length for a (re)set password (#9)
+
 def hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
     dk   = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, PBKDF2_ITERS)
@@ -290,6 +292,10 @@ class RegisterBody(BaseModel):
 class LoginBody(BaseModel):
     username: str
     password: str
+
+class ChangePasswordBody(BaseModel):
+    old_password: str
+    new_password: str
 
 class ClientConfigBody(BaseModel):
     host_url: str
@@ -461,5 +467,29 @@ def update_my_prefs(body: dict, request: Request):
         conn.execute("UPDATE accounts SET prefs=? WHERE id=?", (json.dumps(prefs), user["id"]))
         conn.commit()
         return {"prefs": prefs}
+    finally:
+        conn.close()
+
+@router.patch("/me/password")
+def change_my_password(body: ChangePasswordBody, request: Request):
+    """Self-serve: the logged-in account changes ITS OWN password. Requires the
+    current password, enforces the minimum length, and signs other sessions out
+    (the current one stays). Household/passwordless identities have no password (#9)."""
+    token = request.cookies.get(COOKIE_NAME)
+    user  = current_user_from_request(request)
+    if not user: raise HTTPException(status_code=401, detail="Not authenticated")
+    if not user.get("id"): raise HTTPException(status_code=400, detail="This identity has no password")
+    if len(body.new_password) < PASSWORD_MIN:
+        raise HTTPException(status_code=400, detail=f"New password must be at least {PASSWORD_MIN} characters")
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT password_hash FROM accounts WHERE id=?", (user["id"],)).fetchone()
+        if not row or not verify_password(body.old_password, row["password_hash"]):
+            raise HTTPException(status_code=400, detail="Current password is incorrect")
+        conn.execute("UPDATE accounts SET password_hash=? WHERE id=?", (hash_password(body.new_password), user["id"]))
+        # keep this session, drop the account's other sessions
+        conn.execute("DELETE FROM sessions WHERE account_id=? AND token != ?", (user["id"], token))
+        conn.commit()
+        return {"ok": True}
     finally:
         conn.close()

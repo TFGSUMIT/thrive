@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 
-from routers.auth import get_db, hash_password, current_user_from_request
+from routers.auth import get_db, hash_password, current_user_from_request, PASSWORD_MIN
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -132,7 +132,7 @@ def set_disabled(account_id: int, body: DisabledBody, request: Request):
 @router.patch("/{account_id}/password")
 def reset_password(account_id: int, body: PasswordBody, request: Request):
     _require_admin(request)
-    if len(body.password) < 8: raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    if len(body.password) < PASSWORD_MIN: raise HTTPException(status_code=400, detail=f"Password must be at least {PASSWORD_MIN} characters")
     conn = get_db()
     try:
         if not conn.execute("SELECT id FROM accounts WHERE id=?", (account_id,)).fetchone():

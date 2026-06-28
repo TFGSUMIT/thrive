@@ -7,7 +7,10 @@ import { useAuth } from '../context/AuthContext'
 import { api } from '../api'
 import { THEMES, applyTheme, DEFAULT_THEME } from '../theme'
 import EmojiPicker from '../components/EmojiPicker'
+import PasswordInput from '../components/PasswordInput'
 import { MODULES } from '../moduleRegistry'
+
+const PASSWORD_MIN = 18   // keep in sync with auth.py (#9)
 
 const card = { background: 'var(--bg-secondary,#181818)', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }
 const head = { padding: '12px 16px', borderBottom: '1px solid var(--border-color,#2a2a2a)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-tertiary,#666)' }
@@ -298,6 +301,47 @@ function ModulesSection() {
   )
 }
 
+// ── Change my password (#9) — self-service for any account-backed identity ────
+function ChangePasswordSection() {
+  const [cur,  setCur]  = useState('')
+  const [pw,   setPw]   = useState('')
+  const [pw2,  setPw2]  = useState('')
+  const [err,  setErr]  = useState(null)
+  const [ok,   setOk]   = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const submit = async () => {
+    setErr(null); setOk(false)
+    if (!cur)                 { setErr('Enter your current password'); return }
+    if (pw.length < PASSWORD_MIN) { setErr(`New password must be at least ${PASSWORD_MIN} characters`); return }
+    if (pw !== pw2)           { setErr('New passwords do not match'); return }
+    if (pw === cur)           { setErr('New password must differ from the current one'); return }
+    setBusy(true)
+    try {
+      await api.patch('/auth/me/password', { old_password: cur, new_password: pw })
+      setCur(''); setPw(''); setPw2(''); setOk(true)
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+
+  return (
+    <CollapsibleCard title="Change password" defaultOpen={false}>
+      <div style={{ ...body, display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 360 }}>
+        <div style={lbl}>Current password</div>
+        <PasswordInput style={inp} placeholder="Current password" value={cur} autoComplete="current-password"
+          onChange={e => { setCur(e.target.value); setOk(false) }} />
+        <div style={{ ...lbl, marginTop: 4 }}>New password (min {PASSWORD_MIN})</div>
+        <PasswordInput style={inp} placeholder={`New password (min ${PASSWORD_MIN})`} value={pw} autoComplete="new-password"
+          onChange={e => { setPw(e.target.value); setOk(false) }} />
+        <PasswordInput style={inp} placeholder="Repeat new password" value={pw2} autoComplete="new-password"
+          onChange={e => { setPw2(e.target.value); setOk(false) }} />
+        {err && <div style={{ fontSize: 12, color: 'var(--color-danger,#ef4444)' }}>{err}</div>}
+        {ok  && <div style={{ fontSize: 12, color: 'var(--color-success,#22c55e)' }}>Password updated — other devices were signed out.</div>}
+        <div><button style={{ ...btnP, marginTop: 4, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={submit}>Update password</button></div>
+      </div>
+    </CollapsibleCard>
+  )
+}
+
 function AccountsSection() {
   const { user, logout }      = useAuth()
   const [accounts, setAccounts] = useState([])
@@ -308,6 +352,7 @@ function AccountsSection() {
   const [err,      setErr]      = useState(null)
   const [rowUi,    setRowUi]    = useState({})
   const [resetPw,  setResetPw]  = useState({})
+  const [resetPw2, setResetPw2] = useState({})
   const setRow = (id, patch) => setRowUi(p => ({ ...p, [id]: { ...p[id], ...patch } }))
 
   const load = async () => {
@@ -333,7 +378,7 @@ function AccountsSection() {
   const toggleDisable = async (id, disabled) => { try { await api.patch(`/accounts/${id}/disabled`, { disabled }); load() } catch (e) { setErr(e.message) } }
   const linkUser      = async (id, user_id)  => { try { await api.patch(`/accounts/${id}/user`,     { user_id: user_id ? Number(user_id) : null }); load() } catch (e) { setErr(e.message) } }
   const makeHead      = async (id)           => { try { await api.patch(`/accounts/${id}/head`, {}); load() } catch (e) { setErr(e.message) } }
-  const doReset       = async (id)           => { const pw = resetPw[id] || ''; if (pw.length < 8) { setErr('Min 8 chars'); return }; try { await api.patch(`/accounts/${id}/password`, { password: pw }); setResetPw(p => ({ ...p, [id]: '' })); setRow(id, { resetting: false }) } catch (e) { setErr(e.message) } }
+  const doReset       = async (id)           => { const pw = resetPw[id] || ''; const pw2 = resetPw2[id] || ''; if (pw.length < PASSWORD_MIN) { setErr(`Min ${PASSWORD_MIN} chars`); return }; if (pw !== pw2) { setErr('Passwords do not match'); return }; setErr(null); try { await api.patch(`/accounts/${id}/password`, { password: pw }); setResetPw(p => ({ ...p, [id]: '' })); setResetPw2(p => ({ ...p, [id]: '' })); setRow(id, { resetting: false }) } catch (e) { setErr(e.message) } }
   const doDelete      = async (id)           => { try { await api.del(`/accounts/${id}`); load() } catch (e) { setErr(e.message) } }
 
   return (
@@ -413,8 +458,9 @@ function AccountsSection() {
               </div>
             </div>
             {ui.resetting && (
-              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                <input style={{ ...inp, flex: 1 }} type="text" placeholder="New password (min 8)" value={resetPw[a.id] || ''} onChange={e => setResetPw(p => ({ ...p, [a.id]: e.target.value }))} autoComplete="off" />
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                <PasswordInput wrapStyle={{ flex: '1 1 160px' }} style={inp} placeholder={`New password (min ${PASSWORD_MIN})`} value={resetPw[a.id] || ''} onChange={e => setResetPw(p => ({ ...p, [a.id]: e.target.value }))} autoComplete="new-password" />
+                <PasswordInput wrapStyle={{ flex: '1 1 160px' }} style={inp} placeholder="Repeat new password" value={resetPw2[a.id] || ''} onChange={e => setResetPw2(p => ({ ...p, [a.id]: e.target.value }))} autoComplete="new-password" />
                 <button style={{ ...btnP, padding: '7px 12px' }} onClick={() => doReset(a.id)}>Set</button>
                 <button style={btnS} onClick={() => setRow(a.id, { resetting: false })}>Cancel</button>
               </div>
@@ -542,6 +588,10 @@ export default function SettingsPage() {
           </div>
         </CollapsibleCard>
       )}
+
+      {/* Self-service password change — any account-backed identity (not the
+          shared Household or a passwordless profile, which have no password). */}
+      {user?.id && <ChangePasswordSection />}
 
       {user?.role === 'admin' && <AccountsSection />}
 
