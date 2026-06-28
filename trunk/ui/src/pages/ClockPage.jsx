@@ -52,11 +52,12 @@ export default function ClockPage() {
     try { localStorage.setItem(KEY, JSON.stringify(np)) } catch {}
   }
 
-  const time = now.toLocaleTimeString(undefined, {
-    hour: 'numeric', minute: '2-digit',
-    ...(p.seconds ? { second: '2-digit' } : {}),
-    hour12: !p.hour24,
-  })
+  const h24 = now.getHours()
+  const hh = p.hour24 ? String(h24).padStart(2, '0') : String(h24 % 12 || 12)
+  const mm = String(now.getMinutes()).padStart(2, '0')
+  const ss = String(now.getSeconds()).padStart(2, '0')
+  const digits = p.seconds ? `${hh}:${mm}:${ss}` : `${hh}:${mm}`
+  const ampm = p.hour24 ? null : (h24 < 12 ? 'AM' : 'PM')
   const date = now.toLocaleDateString(undefined, {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   })
@@ -74,7 +75,10 @@ export default function ClockPage() {
     <div style={wrap}>
       {p.mode === 'analog'
         ? <Analog now={now} seconds={p.seconds} />
-        : <div style={{ fontFamily: 'var(--font-mono,monospace)', fontSize: 'min(17vw, 22vh)', fontWeight: 700, letterSpacing: '0.01em', lineHeight: 1, whiteSpace: 'nowrap' }}>{time}</div>}
+        : <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 'min(2vw, 16px)', maxWidth: '94vw', lineHeight: 1 }}>
+            <span style={{ fontFamily: 'var(--font-mono,monospace)', fontSize: 'min(14vw, 20vh)', fontWeight: 700, letterSpacing: '0.01em', whiteSpace: 'nowrap' }}>{digits}</span>
+            {ampm && <span style={{ fontFamily: 'var(--font-mono,monospace)', fontSize: 'min(2.6vw, 4vh)', fontWeight: 600, letterSpacing: '0.12em', color: 'var(--text-tertiary,#666)' }}>{ampm}</span>}
+          </div>}
 
       {p.date && <div style={{ fontSize: 'clamp(14px, 3vw, 22px)', color: 'var(--text-secondary,#aaa)', fontFamily: 'var(--font-mono,monospace)' }}>{date}</div>}
 
