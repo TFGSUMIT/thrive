@@ -16,6 +16,7 @@ import OnScreenKeyboard from './components/OnScreenKeyboard'
 import ErrorBoundary from './components/ErrorBoundary'
 import LandingPage from './pages/LandingPage'
 import SettingsPage from './pages/SettingsPage'
+import ClockPage from './pages/ClockPage'
 import { MODULES } from './moduleRegistry'
 
 // Module UIs are discovered entirely at build time (see moduleRegistry.js).
@@ -28,7 +29,8 @@ const NAV_ORDER_KEY = 'thrive:navOrder'
 const loadNavOrder = () => { try { return JSON.parse(localStorage.getItem(NAV_ORDER_KEY)) || [] } catch { return [] } }
 
 // Live date + time for the top bar (#6) — visible on every non-immersive page.
-function Clock() {
+// Tapping it opens the clock screen (#16).
+function Clock({ onClick }) {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000)
@@ -37,9 +39,13 @@ function Clock() {
   const date = now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
   const time = now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
   return (
-    <div title={now.toLocaleString()} aria-label="current date and time"
-      style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginRight: 10, whiteSpace: 'nowrap',
-               fontFamily: 'var(--font-mono,monospace)', fontSize: 11 }}>
+    <div onClick={onClick} role="button" title="Open clock" aria-label="current date and time — open clock"
+      style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginRight: 6, whiteSpace: 'nowrap',
+               fontFamily: 'var(--font-mono,monospace)', fontSize: 11,
+               cursor: onClick ? 'pointer' : 'default', padding: '4px 8px', borderRadius: 6,
+               border: '1px solid transparent' }}
+      onMouseEnter={e => { if (onClick) e.currentTarget.style.borderColor = 'var(--border-color,#2a2a2a)' }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = 'transparent' }}>
       <span style={{ color: 'var(--text-tertiary,#666)' }}>{date}</span>
       <span style={{ color: 'var(--text-primary,#e8e6e0)', letterSpacing: '0.04em' }}>{time}</span>
     </div>
@@ -136,7 +142,7 @@ function TopNav({ onOpenPicker }) {
 
       <div style={{ flex: 1 }} />
 
-      <Clock />
+      <Clock onClick={() => navigate('/clock')} />
 
       {/* identity switcher — current user (Household or a person); opens the picker */}
       <button onClick={onOpenPicker} title="Switch profile"
@@ -303,6 +309,7 @@ function Shell() {
               return <Route key={m.id} path={m.path} element={<Page />} />
             })}
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/clock"    element={<ClockPage />} />
             <Route path="*"         element={<Navigate to="/" replace />} />
           </Routes>
         </ErrorBoundary>
