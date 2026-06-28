@@ -146,11 +146,17 @@ export default function TransactionsPage({ initial = {}, onBalanceChange }) {
 
     // ── Single row actions ────────────────────────────────────────────────────
 
-    async function handleDelete(id, payeeName) {
-        const ok = await confirm(`Delete transaction '${payeeName || 'this'}'?`, { danger: true })
+    async function handleDelete(t) {
+        // A transfer leg is linked to a matching transaction on another account.
+        // Tell the user, and that the other leg is unlinked (not deleted).
+        const otherAcct = (t.category_name || '').replace(/^Transfer:\s*/, '')
+        const msg = t.transfer_account_id
+            ? `Delete this transfer? Its matching transaction on ${otherAcct || 'the other account'} will be unlinked and marked Uncleared — not deleted.`
+            : `Delete transaction '${t.payee_name || 'this'}'?`
+        const ok = await confirm(msg, { danger: true })
         if (!ok) return
         try {
-            await api.del(`/transactions/${id}`)
+            await api.del(`/transactions/${t.id}`)
             showToast('Deleted', 'success')
             reload(); loadLookups()
         } catch (e) { showToast(e.message, 'error') }
@@ -498,7 +504,7 @@ export default function TransactionsPage({ initial = {}, onBalanceChange }) {
                                             setShowAdd(false); setShowImport(false); setVerifyId(null)
                                         }
                                     }}
-                                    onDelete={() => handleDelete(t.id, t.payee_name)}
+                                    onDelete={() => handleDelete(t)}
                                     onCycleStatus={() => handleCycleStatus(t)}
                                     onAccountClick={(id) => setAccountId(String(id))}
                                     matchClass={pairKey ? (isFirst ? 'match-pair match-pair--top' : 'match-pair match-pair--bottom') : ''}

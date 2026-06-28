@@ -680,18 +680,20 @@ def delete_transaction(transaction_id: int, request: Request, db=Depends(get_db)
     if row is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
+    # If this is one leg of a transfer, DON'T delete the other leg. Unlink it so it
+    # becomes a standalone transaction on its own account (that account self-corrects),
+    # and mark it Uncleared so it's flagged for review.
     if row["transfer_transaction_id"] is not None:
-        paired_id = row["transfer_transaction_id"]
         db.execute(
-            "UPDATE transactions SET transfer_transaction_id = NULL WHERE id IN (?, ?)",
-            (transaction_id, paired_id)
+            "UPDATE transactions SET transfer_transaction_id = NULL, "
+            "transfer_account_id = NULL, cleared = NULL WHERE id = ?",
+            (row["transfer_transaction_id"],)
         )
-        db.execute("DELETE FROM transactions WHERE id = ?", (paired_id,))
 
-    db.execute(
-        "UPDATE transactions SET matched_transaction_id = NULL WHERE matched_transaction_id = ?",
-        (transaction_id,)
-    )
+    # Clear any inbound references to THIS row before deleting it, so foreign keys
+    # don't fail (a transfer pair pointing back, or a matched import row).
+    db.execute("UPDATE transactions SET transfer_transaction_id = NULL WHERE transfer_transaction_id = ?", (transaction_id,))
+    db.execute("UPDATE transactions SET matched_transaction_id = NULL WHERE matched_transaction_id = ?", (transaction_id,))
     # splits deleted automatically via ON DELETE CASCADE
     db.execute("DELETE FROM transactions WHERE id = ?", (transaction_id,))
     db.commit()
@@ -707,16 +709,29 @@ def bulk_delete(body: BulkIds, request: Request, db=Depends(get_db)):
     if not body.ids:
         return {"deleted": 0}
     to_delete = set(body.ids)
-    for tid in list(to_delete):
+
+    # Transfer legs of selected rows that are NOT themselves selected: unlink them
+    # (clear the transfer link, mark Uncleared) instead of deleting — same rule as
+    # single delete. If both legs are selected, both just get deleted below.
+    pairs_to_unlink = set()
+    for tid in to_delete:
         row = db.execute(
             "SELECT transfer_transaction_id FROM transactions WHERE id = ?", (tid,)
         ).fetchone()
-        if row and row["transfer_transaction_id"]:
-            to_delete.add(row["transfer_transaction_id"])
+        if row and row["transfer_transaction_id"] and row["transfer_transaction_id"] not in to_delete:
+            pairs_to_unlink.add(row["transfer_transaction_id"])
+    if pairs_to_unlink:
+        ph = ",".join("?" * len(pairs_to_unlink))
+        db.execute(
+            f"UPDATE transactions SET transfer_transaction_id = NULL, transfer_account_id = NULL, "
+            f"cleared = NULL WHERE id IN ({ph})",
+            list(pairs_to_unlink)
+        )
 
     placeholders = ",".join("?" * len(to_delete))
+    # clear inbound refs pointing INTO the delete set so foreign keys don't fail
     db.execute(
-        f"UPDATE transactions SET transfer_transaction_id = NULL WHERE id IN ({placeholders})",
+        f"UPDATE transactions SET transfer_transaction_id = NULL WHERE transfer_transaction_id IN ({placeholders})",
         list(to_delete)
     )
     db.execute(
