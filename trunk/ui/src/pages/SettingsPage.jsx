@@ -426,6 +426,78 @@ function AccountsSection() {
   )
 }
 
+// ── Permissions matrix (#7 Phase B) — admin-only ──────────────────────────────
+const PERM_LEVELS = ['none', 'view', 'read', 'write']
+const PERM_LABEL  = { none: '—', view: 'View', read: 'Read', write: 'Write' }
+const permChip = (lvl) => {
+  const m = {
+    none:  { bg: 'none', c: 'var(--text-tertiary,#666)', b: 'var(--border-color,#2a2a2a)' },
+    view:  { bg: 'var(--info-muted)',   c: 'var(--color-info)',    b: 'var(--color-info)' },
+    read:  { bg: 'var(--accent-muted)', c: 'var(--accent)',        b: 'var(--accent)' },
+    write: { bg: 'rgba(34,197,94,0.16)', c: 'var(--color-success,#22c55e)', b: 'var(--color-success,#22c55e)' },
+  }[lvl]
+  return { width: 48, padding: '4px 0', borderRadius: 5, fontSize: 9, fontWeight: 600, textTransform: 'uppercase',
+           letterSpacing: '0.04em', cursor: 'pointer', border: `1px solid ${m.b}`, background: m.bg, color: m.c }
+}
+
+function PermissionsSection() {
+  const [data, setData] = useState(null)   // { modules:[id], subjects:[{user_id,name,access}] }
+  const [err,  setErr]  = useState(null)
+  useEffect(() => { api.get('/permissions').then(setData).catch(e => setErr(e.message)) }, [])
+  if (!data) return null
+
+  const cycle = async (subj, mid) => {
+    const cur = subj.access[mid] || 'none'
+    const next = PERM_LEVELS[(PERM_LEVELS.indexOf(cur) + 1) % PERM_LEVELS.length]
+    setData(d => ({ ...d, subjects: d.subjects.map(s => s.user_id === subj.user_id
+      ? { ...s, access: { ...s.access, [mid]: next } } : s) }))
+    try { await api.put('/permissions', { user_id: subj.user_id, module_id: mid, level: next }); window.dispatchEvent(new Event('thrive:modules-changed')) }
+    catch (e) { setErr(e.message) }
+  }
+
+  return (
+    <CollapsibleCard title="Permissions">
+      <div style={{ padding: '12px 16px 4px', fontSize: 11, color: 'var(--text-tertiary,#888)' }}>
+        Who can see &amp; use each module. Admins always have full access; everyone else starts locked out. Tap a cell to cycle —/View/Read/Write.
+      </div>
+      {err && <div style={{ padding: '0 16px 8px', fontSize: 12, color: 'var(--color-danger,#ef4444)' }}>{err}</div>}
+      <div style={{ overflowX: 'auto', padding: '8px 16px 16px' }}>
+        <table style={{ borderCollapse: 'collapse', fontSize: 11 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text-tertiary,#666)', fontWeight: 500 }}>Profile</th>
+              {data.modules.map(mid => (
+                <th key={mid} style={{ padding: '4px 4px', color: 'var(--text-tertiary,#666)', fontWeight: 500, height: 78, verticalAlign: 'bottom' }}>
+                  <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', margin: '0 auto', fontFamily: 'var(--font-mono,monospace)' }}>{mid}</div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {data.subjects.map(subj => (
+              <tr key={subj.user_id} style={{ borderTop: '1px solid var(--border-color,#2a2a2a)' }}>
+                <td style={{ padding: '5px 8px', whiteSpace: 'nowrap', fontWeight: 500 }}>
+                  {subj.user_id === 0 ? '🏠 Household' : subj.name}
+                </td>
+                {data.modules.map(mid => {
+                  const lvl = subj.access[mid] || 'none'
+                  return (
+                    <td key={mid} style={{ padding: 2, textAlign: 'center' }}>
+                      <button onClick={() => cycle(subj, mid)} title={`${subj.name} · ${mid}: ${lvl}`} style={permChip(lvl)}>
+                        {PERM_LABEL[lvl]}
+                      </button>
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </CollapsibleCard>
+  )
+}
+
 
 export default function SettingsPage() {
   const { user, logout } = useAuth()
@@ -435,7 +507,7 @@ export default function SettingsPage() {
   const [activeIds, setActiveIds] = useState(() => new Set())
   useEffect(() => {
     api.get('/modules')
-      .then(ms => setActiveIds(new Set(ms.filter(m => m.installed && m.enabled).map(m => m.id))))
+      .then(ms => setActiveIds(new Set(ms.filter(m => m.installed && m.enabled && m.access !== 'none').map(m => m.id))))
       .catch(() => {})
   }, [])
   const modulePanels = MODULES.filter(m => m.settings && activeIds.has(m.id))
@@ -471,6 +543,8 @@ export default function SettingsPage() {
       )}
 
       {user?.role === 'admin' && <AccountsSection />}
+
+      {user?.role === 'admin' && <PermissionsSection />}
 
 
       <CollapsibleCard title="UI" defaultOpen={false}>

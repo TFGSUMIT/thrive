@@ -17,6 +17,7 @@ import ErrorBoundary from './components/ErrorBoundary'
 import LandingPage from './pages/LandingPage'
 import SettingsPage from './pages/SettingsPage'
 import ClockPage from './pages/ClockPage'
+import { useModules, ModuleLocked, canOpen } from './access'
 import { MODULES } from './moduleRegistry'
 
 // Module UIs are discovered entirely at build time (see moduleRegistry.js).
@@ -70,8 +71,9 @@ function TopNav({ onOpenPicker }) {
     return () => window.removeEventListener('thrive:modules-changed', fetchModules)
   }, [user])
 
-  // active nav modules, arranged by the saved order; unknown/new ones fall to the end
-  const active = modules.filter(m => m.installed && m.enabled && m.nav_path)
+  // active nav modules, arranged by the saved order; unknown/new ones fall to the end.
+  // #7 Phase B: only modules the viewer can see (access != 'none').
+  const active = modules.filter(m => m.installed && m.enabled && m.nav_path && m.access !== 'none')
   const byId   = new Map(active.map(m => [m.id, m]))
   const navModules = [
     ...order.filter(id => byId.has(id)).map(id => byId.get(id)),
@@ -280,6 +282,9 @@ function Shell() {
   const [immersive, setImmersive] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const location = useLocation()
+  // #7 Phase B: viewer's per-module access (null while loading) — gates routes below
+  const modules = useModules()
+  const accessById = modules ? Object.fromEntries(modules.map(m => [m.id, m.access])) : null
   useEffect(() => {
     const onImmersive = (e) => setImmersive(!!e.detail)
     window.addEventListener('thrive:immersive', onImmersive)
@@ -303,10 +308,19 @@ function Shell() {
           <Routes>
             <Route path="/"         element={<RootRoute />} />
             {/* module routes — emitted from the registry, not hardcoded.
-                Headless modules (no nav route, e.g. fps) declare no path/Page. */}
+                Headless modules (no nav route, e.g. fps) declare no path/Page.
+                #7 Phase B: gate each on the viewer's access level. */}
             {MODULES.filter(m => m.path && m.Page).map(m => {
               const Page = m.Page
-              return <Route key={m.id} path={m.path} element={<Page />} />
+              let element
+              if (accessById === null) element = null                         // modules not loaded yet
+              else {
+                const lvl = accessById[m.id] || 'none'
+                element = canOpen(lvl) ? <Page />
+                        : lvl === 'view' ? <ModuleLocked />
+                        : <Navigate to="/" replace />
+              }
+              return <Route key={m.id} path={m.path} element={element} />
             })}
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/clock"    element={<ClockPage />} />

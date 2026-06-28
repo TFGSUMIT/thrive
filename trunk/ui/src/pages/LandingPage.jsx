@@ -23,7 +23,7 @@ export default function LandingPage() {
   // only active (installed + enabled) modules with a page become feature tiles.
   // Headless modules (no nav_path, e.g. lmstudio) are surfaced via Settings only,
   // matching the nav-bar filter in App.jsx.
-  const enabled = modules.filter(m => m.installed && m.enabled && !m.core && m.nav_path)
+  const enabled = modules.filter(m => m.installed && m.enabled && !m.core && m.nav_path && m.access !== 'none')
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '3rem 2rem' }}>
