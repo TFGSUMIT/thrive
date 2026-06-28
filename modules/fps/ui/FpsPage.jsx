@@ -1,6 +1,6 @@
 // =============================================================================
 // FpsPage.jsx — the FPS Meter module's page (/fps)
-// A live frame-rate readout + the per-device toggle for the always-on top badge.
+// A live frame-rate readout + the per-device opt-in toggle for the top badge.
 // =============================================================================
 import { useState, useEffect, useRef } from 'react'
 import { FPS_KEY, fpsEnabled } from './FpsOverlay'
@@ -88,7 +88,7 @@ export default function FpsPage() {
         <div>
           <div style={{ fontSize: 13, color: 'var(--text-primary,#e8e6e0)' }}>Show badge on every screen</div>
           <div style={{ fontSize: 10, color: 'var(--text-tertiary,#666)', marginTop: 2 }}>
-            Tiny top-center readout, always visible. Per device.
+            Tiny top-center readout. Off by default — turn on to keep it visible. Per device.
           </div>
         </div>
         <button onClick={() => toggle(!on)} aria-pressed={on}

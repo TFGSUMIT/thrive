@@ -8,12 +8,13 @@
 //
 // Show/hide is a PER-DEVICE preference (localStorage `thrive:fps`) — a property
 // of this screen/kiosk, not the account — toggled in the module's settings panel.
-// Default ON: enabling the module shows the badge until this device hides it.
+// Default OFF (opt-in): enabling the module makes the readout *available* but
+// paints nothing until this device turns the badge on in Settings.
 // =============================================================================
 import { useState, useEffect } from 'react'
 
 export const FPS_KEY = 'thrive:fps'
-export const fpsEnabled = () => { try { return localStorage.getItem(FPS_KEY) !== '0' } catch { return true } }
+export const fpsEnabled = () => { try { return localStorage.getItem(FPS_KEY) === '1' } catch { return false } }
 
 export default function FpsOverlay() {
   const [on, setOn]   = useState(fpsEnabled)
