@@ -49,6 +49,16 @@ def init_modules_table():
             conn.execute("ALTER TABLE modules ADD COLUMN icon_override TEXT")
         if "color_override" not in cols:
             conn.execute("ALTER TABLE modules ADD COLUMN color_override TEXT")
+        # per-profile × per-module access (#7 Phase B). user_id 0 = the shared
+        # Household identity. No row => 'none' (locked down by default, #18).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS module_access (
+                user_id   INTEGER NOT NULL,             -- 0 = Household (no-login shared view), else users.id
+                module_id TEXT NOT NULL,
+                level     TEXT NOT NULL DEFAULT 'none',  -- none | view | read | write
+                PRIMARY KEY (user_id, module_id)
+            )
+        """)
         conn.commit()
     finally:
         conn.close()
@@ -231,6 +241,71 @@ def list_modules() -> list[dict]:
             if d.get("icon_override"):  d["icon"]  = d["icon_override"]
             if d.get("color_override"): d["color"] = d["color_override"]
         return rows
+    finally:
+        conn.close()
+
+
+# ── per-profile module access (#7 Phase B) ───────────────────────────────────
+LEVELS = ("none", "view", "read", "write")
+HOUSEHOLD_UID = 0   # the no-login Household identity's key in module_access
+
+def viewer_levels(user) -> dict:
+    """{module_id: level} for the current viewer across all registered modules.
+    Admins get 'write' everywhere; everyone else is 'none' unless explicitly granted
+    (Household keyed as user_id 0; a logged-in profile by its id)."""
+    conn = get_db()
+    try:
+        ids = [r["id"] for r in conn.execute("SELECT id FROM modules").fetchall()]
+        if user and user.get("role") == "admin":
+            return {mid: "write" for mid in ids}
+        prof = (user or {}).get("profile")
+        key = prof["id"] if prof else HOUSEHOLD_UID        # no profile => Household
+        granted = {r["module_id"]: r["level"] for r in conn.execute(
+            "SELECT module_id, level FROM module_access WHERE user_id=?", (key,)).fetchall()}
+        return {mid: granted.get(mid, "none") for mid in ids}
+    finally:
+        conn.close()
+
+def list_modules_for(user) -> list[dict]:
+    """list_modules() plus each module's `access` level for the current viewer."""
+    levels = viewer_levels(user)
+    rows = list_modules()
+    for d in rows:
+        d["access"] = levels.get(d["id"], "none")
+    return rows
+
+def permissions_matrix() -> dict:
+    """Admin view: Household + every profile and its per-module level (unset = none)."""
+    conn = get_db()
+    try:
+        mods = [r["id"] for r in conn.execute("SELECT id FROM modules ORDER BY id").fetchall()]
+        subjects = [{"user_id": HOUSEHOLD_UID, "name": "Household"}] + \
+                   [{"user_id": r["id"], "name": r["name"]} for r in
+                    conn.execute("SELECT id, name FROM users ORDER BY id").fetchall()]
+        grants = {}
+        for r in conn.execute("SELECT user_id, module_id, level FROM module_access").fetchall():
+            grants.setdefault(r["user_id"], {})[r["module_id"]] = r["level"]
+        for s in subjects:
+            g = grants.get(s["user_id"], {})
+            s["access"] = {mid: g.get(mid, "none") for mid in mods}
+        return {"modules": mods, "subjects": subjects}
+    finally:
+        conn.close()
+
+def set_access(user_id: int, module_id: str, level: str) -> bool:
+    if level not in LEVELS:
+        return False
+    conn = get_db()
+    try:
+        if level == "none":
+            conn.execute("DELETE FROM module_access WHERE user_id=? AND module_id=?", (user_id, module_id))
+        else:
+            conn.execute(
+                "INSERT INTO module_access (user_id, module_id, level) VALUES (?,?,?) "
+                "ON CONFLICT(user_id, module_id) DO UPDATE SET level=excluded.level",
+                (user_id, module_id, level))
+        conn.commit()
+        return True
     finally:
         conn.close()
 

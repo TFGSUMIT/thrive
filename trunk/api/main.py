@@ -39,9 +39,30 @@ app.include_router(accounts_router)
 
 # ── modules api ───────────────────────────────────────────────────────────────
 @app.get("/modules")
-def get_modules():
-    """List all installed modules with enabled state."""
-    return mod_registry.list_modules()
+def get_modules(request: Request):
+    """Installed modules + the current viewer's per-module access level (#7 Phase B)."""
+    return mod_registry.list_modules_for(current_user_from_request(request))
+
+@app.get("/permissions")
+def get_permissions(request: Request):
+    """Admin: Household + every profile with its per-module access level (#7 Phase B)."""
+    user = current_user_from_request(request)
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    return mod_registry.permissions_matrix()
+
+@app.put("/permissions")
+def put_permission(request: Request, body: dict):
+    """Admin: set one (subject, module) access level. user_id 0 = Household."""
+    user = current_user_from_request(request)
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    uid, mid, level = body.get("user_id"), body.get("module_id"), body.get("level")
+    if uid is None or not mid or level not in mod_registry.LEVELS:
+        raise HTTPException(status_code=400, detail="user_id, module_id, and a valid level are required")
+    if not mod_registry.set_access(int(uid), mid, level):
+        raise HTTPException(status_code=400, detail="Could not set access")
+    return {"ok": True}
 
 @app.patch("/modules/{module_id}")
 def update_module(module_id: str, request: Request, body: dict):
