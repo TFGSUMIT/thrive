@@ -478,14 +478,15 @@ function PermissionsSection() {
               <tr key={subj.user_id} style={{ borderTop: '1px solid var(--border-color,#2a2a2a)' }}>
                 <td style={{ padding: '5px 8px', whiteSpace: 'nowrap', fontWeight: 500 }}>
                   {subj.user_id === 0 ? '🏠 Household' : subj.name}
+                  {subj.is_admin && <span style={{ marginLeft: 6, fontSize: 9, color: 'var(--text-tertiary,#666)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>admin</span>}
                 </td>
                 {data.modules.map(mid => {
-                  const lvl = subj.access[mid] || 'none'
+                  const lvl = subj.is_admin ? 'write' : (subj.access[mid] || 'none')
                   return (
                     <td key={mid} style={{ padding: 2, textAlign: 'center' }}>
-                      <button onClick={() => cycle(subj, mid)} title={`${subj.name} · ${mid}: ${lvl}`} style={permChip(lvl)}>
-                        {PERM_LABEL[lvl]}
-                      </button>
+                      {subj.is_admin
+                        ? <span title="Admins always have full access" style={{ ...permChip('write'), display: 'inline-block', opacity: 0.5, cursor: 'default' }}>{PERM_LABEL.write}</span>
+                        : <button onClick={() => cycle(subj, mid)} title={`${subj.name} · ${mid}: ${lvl}`} style={permChip(lvl)}>{PERM_LABEL[lvl]}</button>}
                     </td>
                   )
                 })}

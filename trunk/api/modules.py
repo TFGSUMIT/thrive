@@ -279,8 +279,10 @@ def permissions_matrix() -> dict:
     conn = get_db()
     try:
         mods = [r["id"] for r in conn.execute("SELECT id FROM modules ORDER BY id").fetchall()]
-        subjects = [{"user_id": HOUSEHOLD_UID, "name": "Household"}] + \
-                   [{"user_id": r["id"], "name": r["name"]} for r in
+        admin_pids = {r["user_id"] for r in conn.execute(
+            "SELECT user_id FROM accounts WHERE role='admin' AND disabled=0 AND user_id IS NOT NULL").fetchall()}
+        subjects = [{"user_id": HOUSEHOLD_UID, "name": "Household", "is_admin": False}] + \
+                   [{"user_id": r["id"], "name": r["name"], "is_admin": r["id"] in admin_pids} for r in
                     conn.execute("SELECT id, name FROM users ORDER BY id").fetchall()]
         grants = {}
         for r in conn.execute("SELECT user_id, module_id, level FROM module_access").fetchall():
