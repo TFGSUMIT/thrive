@@ -30,7 +30,7 @@ export default function FpsPanel() {
       <div>
         <div style={{ fontSize: 12, color: 'var(--text-primary,#e8e6e0)' }}>Show FPS badge</div>
         <div style={{ fontSize: 10, color: 'var(--text-tertiary,#666)', marginTop: 2 }}>
-          Frame-rate readout, top-center. Handy for a heavy ambient on weak hardware. Per device.
+          Frame-rate readout, top-center. Off by default — turn it on when checking a heavy ambient on weak hardware. Per device.
         </div>
       </div>
       {/* compact pill toggle (self-contained — no core Switch dependency) */}
