@@ -141,8 +141,35 @@ export default function TransactionsPage({ initial = {}, onBalanceChange }) {
         return () => observer.disconnect()
     }, [handleIntersect])
 
-    // Helper used by actions that need a clean reload
-    function reload() { setOffset(0); setHasMore(true); fetchPage(0, true) }
+    // In-place refresh used by edit / delete / bulk actions (#29). Re-fetches the
+    // window you've ALREADY scrolled to (offset 0 → current depth) and swaps it in
+    // without toggling the full-screen `loading` state or collapsing back to page 1.
+    // Keeps content height steady, so scroll position + loaded rows stay put instead
+    // of snapping to the top. Running balances stay correct (server recomputes for
+    // the window). Limit is clamped to the backend's 500 cap.
+    async function reload() {
+        const count = Math.min(Math.max(transactions.length, PAGE_SIZE), 500)
+        const params = new URLSearchParams()
+        if (accountId) params.set('account_id', accountId)
+        if (fromDate) params.set('from_date', fromDate)
+        if (toDate) params.set('to_date', toDate)
+        if (payeeId) params.set('payee_id', payeeId)
+        if (categoryId) params.set('category_id', categoryId)
+        if (memoQuery) params.set('memo', memoQuery)
+        params.set('sort', sort)
+        params.set('dir', dir)
+        params.set('limit', count)
+        params.set('offset', 0)
+        try {
+            const data = await api.get(`/transactions/?${params}`)
+            setTransactions(data)
+            setSelected(new Set())
+            setOffset(data.length)
+            setHasMore(data.length === count)
+        } catch (e) {
+            showToast(e.message, 'error')
+        }
+    }
 
     // ── Single row actions ────────────────────────────────────────────────────
 
