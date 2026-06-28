@@ -1,4 +1,0 @@
-# The encrypted-secret store. crypto.py is a shared platform lib (in trunk/api),
-# but its dependency is declared here so it's only installed when a module that
-# uses secrets (this one, or steam) is present — keeping the core image lean.
-cryptography>=42
