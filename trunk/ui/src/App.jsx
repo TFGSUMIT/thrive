@@ -27,6 +27,25 @@ import { MODULES } from './moduleRegistry'
 const NAV_ORDER_KEY = 'thrive:navOrder'
 const loadNavOrder = () => { try { return JSON.parse(localStorage.getItem(NAV_ORDER_KEY)) || [] } catch { return [] } }
 
+// Live date + time for the top bar (#6) — visible on every non-immersive page.
+function Clock() {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  const date = now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+  const time = now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  return (
+    <div title={now.toLocaleString()} aria-label="current date and time"
+      style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginRight: 10, whiteSpace: 'nowrap',
+               fontFamily: 'var(--font-mono,monospace)', fontSize: 11 }}>
+      <span style={{ color: 'var(--text-tertiary,#666)' }}>{date}</span>
+      <span style={{ color: 'var(--text-primary,#e8e6e0)', letterSpacing: '0.04em' }}>{time}</span>
+    </div>
+  )
+}
+
 function TopNav({ onOpenPicker }) {
   const { user, logout } = useAuth()
   const navigate  = useNavigate()
@@ -116,6 +135,8 @@ function TopNav({ onOpenPicker }) {
       })}
 
       <div style={{ flex: 1 }} />
+
+      <Clock />
 
       {/* identity switcher — current user (Household or a person); opens the picker */}
       <button onClick={onOpenPicker} title="Switch profile"
