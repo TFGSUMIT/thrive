@@ -17,7 +17,7 @@ SESSION_DAYS  = int(os.environ.get("SESSION_DAYS", "30"))
 PBKDF2_ITERS  = 200_000
 
 PUBLIC_PATHS = {"/health", "/auth/status", "/auth/login", "/auth/logout", "/auth/register",
-                "/auth/household", "/auth/client-config", "/system/info"}
+                "/auth/household", "/auth/enter", "/auth/client-config", "/system/info"}
 
 
 # ── db ─────────────────────────────────────────────────────────────────────
@@ -116,11 +116,15 @@ def init_db():
         conn.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
                 token      TEXT PRIMARY KEY,
-                account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,  -- NULL = household
+                account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,  -- NULL = household or passwordless profile
+                user_id    INTEGER REFERENCES users(id)   ON DELETE CASCADE,   -- set = passwordless profile session (no account)
                 created_at TEXT DEFAULT (datetime('now')),
                 expires_at TEXT NOT NULL
             )
         """)
+        # passwordless-profile sessions (#7): add the column to existing DBs.
+        if not any(c["name"] == "user_id" for c in conn.execute("PRAGMA table_info(sessions)").fetchall()):
+            conn.execute("ALTER TABLE sessions ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE")
         # platform_config — tiny key/value for appliance role state (role, host_url).
         conn.execute("""
             CREATE TABLE IF NOT EXISTS platform_config (
@@ -165,6 +169,14 @@ def create_session(conn, account_id: int) -> str:
     conn.execute("INSERT INTO sessions (token, account_id, expires_at) VALUES (?,?,?)", (token, account_id, expires))
     return token
 
+def create_profile_session(conn, user_id: int) -> str:
+    """A passwordless session bound to a profile that has no account (#7)."""
+    token   = secrets.token_urlsafe(32)
+    expires = (datetime.utcnow() + timedelta(days=SESSION_DAYS)).isoformat()
+    conn.execute("INSERT INTO sessions (token, account_id, user_id, expires_at) VALUES (?, NULL, ?, ?)",
+                 (token, user_id, expires))
+    return token
+
 def _account_payload(row) -> dict:
     """Shape the authenticated identity for the frontend: top-level account fields
     (back-compat) plus the linked profile, if any."""
@@ -186,17 +198,29 @@ def _household_payload() -> dict:
     return {"id": None, "username": "household", "email": None,
             "role": "household", "is_head": False, "profile": None, "prefs": {}}
 
+def _profile_payload(prof) -> dict:
+    """A passwordless 'walk-in' profile (a session with user_id but no account, #7):
+    scoped to that profile (own + household data), never admin. Per-module
+    permissions (Phase B) will further gate what it can see/do."""
+    return {"id": None, "username": None, "email": None, "role": "member", "is_head": False,
+            "profile": {"id": prof["id"], "name": prof["name"],
+                        "avatar": prof["avatar"], "color": prof["color"]}, "prefs": {}}
+
 def user_from_token(token: Optional[str]) -> Optional[dict]:
     if not token: return None
     conn = get_db()
     try:
-        s = conn.execute("SELECT account_id, expires_at FROM sessions WHERE token=?",
+        s = conn.execute("SELECT account_id, user_id, expires_at FROM sessions WHERE token=?",
                          (token,)).fetchone()
         if not s: return None
         if s["expires_at"] < datetime.utcnow().isoformat():
             conn.execute("DELETE FROM sessions WHERE token=?", (token,)); conn.commit(); return None
         if s["account_id"] is None:
-            return _household_payload()                 # household guest session
+            if s["user_id"] is not None:                # passwordless profile session (#7)
+                prof = conn.execute("SELECT id, name, avatar, color FROM users WHERE id=?",
+                                    (s["user_id"],)).fetchone()
+                return _profile_payload(prof) if prof else None
+            return _household_payload()                 # household guest session (no account, no profile)
         row = conn.execute(
             """SELECT a.id, a.username, a.email, a.role, a.disabled, a.prefs, a.is_head,
                       u.id AS profile_id, u.name AS profile_name,
@@ -344,6 +368,25 @@ def enter_household(response: Response):
         conn.execute("INSERT INTO sessions (token, account_id, expires_at) VALUES (?, NULL, ?)",
                      (token, expires))
         conn.commit()
+        _set_cookie(response, token)
+        return user_from_token(token)
+    finally:
+        conn.close()
+
+class EnterBody(BaseModel):
+    user_id: int
+
+@router.post("/enter")
+def enter_profile(body: EnterBody, response: Response):
+    """Passwordless login (#7): mint a session for a profile that has NO linked
+    account. Profiles WITH an account must sign in via /login with a password."""
+    conn = get_db()
+    try:
+        if not conn.execute("SELECT id FROM users WHERE id=?", (body.user_id,)).fetchone():
+            raise HTTPException(status_code=404, detail="Profile not found")
+        if conn.execute("SELECT id FROM accounts WHERE user_id=?", (body.user_id,)).fetchone():
+            raise HTTPException(status_code=400, detail="This profile has an account — sign in with its password")
+        token = create_profile_session(conn, body.user_id); conn.commit()
         _set_cookie(response, token)
         return user_from_token(token)
     finally:

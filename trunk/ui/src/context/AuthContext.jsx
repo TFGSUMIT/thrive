@@ -44,6 +44,8 @@ export function AuthProvider({ children }) {
 
   // kiosk: enter the no-login shared Household view (a session with no account)
   const enterHousehold  = async () => { const r = await api.post('/auth/household'); setUser(r); return r }
+  // passwordless login (#7): walk straight into a profile that has no account
+  const enterProfile    = async (userId) => { const r = await api.post('/auth/enter', { user_id: userId }); setUser(r); return r }
   // setup screen → Client: record this box as a client of `host_url`
   const configureClient = async (host_url, creds = {}) => {
     const r = await api.post('/auth/client-config', { host_url, ...creds })
@@ -60,7 +62,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{ user, loading, setupNeeded, role, hostUrl,
-                                   login, register, logout, enterHousehold, configureClient,
+                                   login, register, logout, enterHousehold, enterProfile, configureClient,
                                    refresh, updatePrefs }}>
       {children}
     </AuthContext.Provider>

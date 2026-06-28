@@ -25,6 +25,7 @@ function Face({ p, onClick }) {
           {p.avatar || initial}
         </div>
         {p.is_head && <span title="Head of Household" style={{ position: 'absolute', top: -10, right: -6, fontSize: 22, transform: 'rotate(18deg)' }}>👑</span>}
+        {p.account && <span title="Password required" style={{ position: 'absolute', bottom: -2, right: -2, fontSize: 14 }}>🔒</span>}
       </div>
       <div style={{ fontSize: 12, color: 'var(--text-secondary,#ccc)' }}>{p.name}</div>
     </button>
@@ -32,9 +33,9 @@ function Face({ p, onClick }) {
 }
 
 export default function ProfilePicker({ onClose }) {
-  const { login, enterHousehold } = useAuth()
+  const { login, enterHousehold, enterProfile } = useAuth()
   const [profiles, setProfiles] = useState([])
-  const [sel, setSel] = useState(null)        // a profile with a linked account
+  const [sel, setSel] = useState(null)        // a profile with a linked account (awaiting password)
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -42,11 +43,17 @@ export default function ProfilePicker({ onClose }) {
   const [device, setDevice] = useState(null)
 
   useEffect(() => {
-    api.get('/auth/profiles').then(list => setProfiles((list || []).filter(p => p.account))).catch(() => {})
+    // #7: show ALL profiles — account-less ones walk straight in, accounted ones prompt for a password.
+    api.get('/auth/profiles').then(list => setProfiles(list || [])).catch(() => {})
     api.get('/system/info').then(setDevice).catch(() => {})
   }, [])
 
-  const pick = (p) => { setSel(p); setPassword(''); setShowPw(false); setErr(null) }
+  // accounted → password screen; account-less → walk straight in (passwordless)
+  const pick = (p) => {
+    if (p.account) { setSel(p); setPassword(''); setShowPw(false); setErr(null); return }
+    setBusy(true); setErr(null)
+    enterProfile(p.id).then(() => onClose?.()).catch(e => setErr(e.message || 'Could not enter')).finally(() => setBusy(false))
+  }
   const signIn = async () => {
     if (!password) return setErr('Password required')
     setBusy(true)
@@ -65,7 +72,7 @@ export default function ProfilePicker({ onClose }) {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 22, justifyContent: 'center', maxWidth: 660 }}>
           {profiles.map(p => <Face key={p.id} p={p} onClick={() => pick(p)} />)}
           {profiles.length === 0 && (
-            <div style={{ fontSize: 12, color: 'var(--text-tertiary,#666)' }}>No sign-in profiles yet — add accounts in Settings.</div>
+            <div style={{ fontSize: 12, color: 'var(--text-tertiary,#666)' }}>No profiles yet — add people in the Users module.</div>
           )}
         </div>
         <button style={{ ...ghost, width: 'auto', padding: '9px 22px', marginTop: 34 }} onClick={household}>Continue as Household</button>
