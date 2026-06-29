@@ -2,23 +2,26 @@
 // TransactionRow.jsx — Single transaction row
 // thrive UI
 //
-// Each data cell (Date / Payee / Category / Memo / Amount) is click-to-edit:
-// clicking opens an inline editor for just that field (InlineCellEdit) and
-// commits a single-field PATCH — no need to open the full row form. Split and
-// transfer rows still open the full form (their category/amount aren't a single
-// value); reconciled rows are left read-only for safety.
+// Tap a row to edit it in place (#1): the row's cells turn into controls
+// (date / payee / category / memo / amount) bound to a local draft, and the
+// balance cell is replaced by a ✓ Save / ✗ Cancel / 🗑 Delete cluster. Edits
+// stage locally and commit as one PATCH on Save (so date/amount re-sorts only
+// happen after you're done). Split / transfer / reconciled rows aren't a single
+// value, so they fall back to the full TransactionForm via onEdit. Status (the
+// colored dot) still cycles on tap; account is left fixed. Works on touch — no
+// hover anywhere.
 // =============================================================================
 import { useState } from 'react'
 import { fmtMoney, fmtDate, CLEARED_LABEL, CLEARED_TITLE } from '../utils/constants'
-import InlineCellEdit from './InlineCellEdit'
+import FilterCombo from './FilterCombo'
 
 export default function TransactionRow({
   t, showBalance, showAccount, selected, onSelect,
   onEdit, onDelete, onCycleStatus, onAccountClick, matchClass = '',
   categoryOptions = [], payeeOptions = [], accountOptions = [], onPatch,
 }) {
-  const [edit, setEdit] = useState(null)   // 'date' | 'payee' | 'category' | 'memo' | 'amount' | null
-  const close = () => setEdit(null)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft]     = useState(null)
 
   const isIncome     = (t.amount || 0) > 0
   const isUnverified = t.cleared === 'Unverified'
@@ -33,41 +36,44 @@ export default function TransactionRow({
   // splits/transfers aren't a single value; reconciled rows are locked for safety
   const lockInline = t.has_splits || isTransfer || t.cleared === 'Reconciled'
 
-  // open an inline editor for a field, or fall back to the full form when locked
-  const startEdit = (field) => (e) => {
-    e.stopPropagation()
-    if (lockInline) { onEdit(); return }
-    setEdit(field)
+  // tap the row → edit in place (or hand locked/unverified rows to the full form)
+  const enterEdit = () => {
+    if (editing) return
+    if (isUnverified || lockInline) { onEdit(); return }
+    setDraft({
+      date:        t.date || '',
+      payee_id:    t.payee_id != null ? String(t.payee_id) : '',
+      category_id: t.category_id != null ? String(t.category_id) : '',
+      memo:        t.memo || '',
+      amount:      t.amount != null ? String(t.amount) : '',
+    })
+    setEditing(true)
   }
 
-  // commit a single field (skipping no-ops), then close the editor
-  const commit = (field, raw) => {
-    let fields = null
-    if (field === 'category') {
-      const id = raw == null || raw === '' ? null : Number(raw)
-      if (id !== (t.category_id ?? null)) fields = { category_id: id }
-    } else if (field === 'payee') {
-      const id = raw == null || raw === '' ? null : Number(raw)
-      if (id !== (t.payee_id ?? null)) fields = { payee_id: id }
-    } else if (field === 'memo') {
-      const v = (raw ?? '').trim()
-      if (v !== (t.memo || '')) fields = { memo: v || null }
-    } else if (field === 'date') {
-      const v = (raw ?? '').trim()
-      if (v && v !== t.date) fields = { date: v }
-    } else if (field === 'amount') {
-      const n = parseFloat(raw)
-      if (!isNaN(n) && n !== t.amount) fields = { amount: n }
-    } else if (field === 'transfer') {
-      // convert this row into a transfer (backend creates the paired txn + clears category)
-      const id = raw == null || raw === '' ? null : Number(raw)
-      if (id) fields = { transfer_account_id: id, category_id: null }
-    }
-    close()
-    if (fields) onPatch?.(t.id, fields)
+  const cancel = () => { setEditing(false); setDraft(null) }
+
+  const save = () => {
+    const fields = {}
+    if (draft.date && draft.date !== t.date) fields.date = draft.date
+    const pid = draft.payee_id === '' ? null : Number(draft.payee_id)
+    if (pid !== (t.payee_id ?? null)) fields.payee_id = pid
+    const cid = draft.category_id === '' ? null : Number(draft.category_id)
+    if (cid !== (t.category_id ?? null)) fields.category_id = cid
+    const memo = (draft.memo ?? '').trim()
+    if (memo !== (t.memo || '')) fields.memo = memo || null
+    const amt = parseFloat(draft.amount)
+    if (!isNaN(amt) && amt !== t.amount) fields.amount = amt
+    if (Object.keys(fields).length) onPatch?.(t.id, fields)
+    setEditing(false); setDraft(null)
   }
 
-  const editTitle = lockInline ? 'Edit transaction' : 'Click to edit'
+  // Enter commits, Esc cancels (text inputs only; the pickers handle their own keys)
+  const keyNav = (e) => {
+    if (e.key === 'Enter')  { e.preventDefault(); save() }
+    if (e.key === 'Escape') { e.preventDefault(); cancel() }
+  }
+
+  const stop = (e) => e.stopPropagation()
 
   const categoryText = t.category_name || (isUnverified ? t.import_category : null)
   const categoryDisplay = t.has_splits
@@ -89,66 +95,87 @@ export default function TransactionRow({
     )
 
   return (
-    <div className={`txn-row ${matchClass} ${selected ? 'txn-row--selected' : ''}`}>
+    <div
+      className={`txn-row ${matchClass} ${selected ? 'txn-row--selected' : ''} ${editing ? 'txn-row--editing' : ''}`}
+      onClick={editing ? undefined : enterEdit}
+      title={editing ? undefined : 'Tap to edit'}
+    >
       <input
         type="checkbox"
         className="txn-check"
         checked={selected}
         onChange={onSelect}
-        onClick={e => e.stopPropagation()}
+        onClick={stop}
       />
       <button
         className={`txn-cleared txn-status-col cleared-${clearedKey}${isUnverified ? ' cleared-unverified' : ''}`}
         title={CLEARED_TITLE[clearedKey]}
-        onClick={isUnverified ? onEdit : onCycleStatus}
+        onClick={(e) => { stop(e); (isUnverified ? onEdit : onCycleStatus)() }}
       >
         {CLEARED_LABEL[clearedKey]}
       </button>
 
       {/* Date */}
-      {edit === 'date'
-        ? <span className="txn-date txn-editing"><InlineCellEdit kind="date" value={t.date} onCommit={v => commit('date', v)} onCancel={close} /></span>
-        : <span className="txn-date txn-editable" title={editTitle} onClick={startEdit('date')}>{fmtDate(t.date)}</span>}
+      {editing
+        ? <input className="input txn-edit-field" type="date" value={draft.date}
+            onClick={stop} onKeyDown={keyNav}
+            onChange={e => setDraft(d => ({ ...d, date: e.target.value }))} />
+        : <span className="txn-date">{fmtDate(t.date)}</span>}
 
       {showAccount && (
         <span className="txn-account">
-          <button className="btn btn-ghost txn-account-link" onClick={() => onAccountClick(t.account_id)}>
+          <button className="btn btn-ghost txn-account-link" onClick={(e) => { stop(e); onAccountClick(t.account_id) }}>
             {t.account_name || ''}
           </button>
         </span>
       )}
 
       {/* Payee */}
-      {edit === 'payee'
-        ? <span className="txn-payee txn-editing"><InlineCellEdit kind="picker" value={t.payee_id} options={payeeOptions} placeholder="Payee…" onCommit={v => commit('payee', v)} onCancel={close} /></span>
-        : <span className="txn-payee txn-editable" title={editTitle} onClick={startEdit('payee')}>
+      {editing
+        ? <span className="txn-edit-field" onClick={stop}>
+            <FilterCombo options={payeeOptions} value={draft.payee_id} placeholder="Payee…" width={140}
+              onChange={v => setDraft(d => ({ ...d, payee_id: v }))} />
+          </span>
+        : <span className="txn-payee">
             {t.payee_name || (isUnverified ? t.import_description : null) || <span className="txn-cell-empty">+ payee</span>}
           </span>}
 
       {/* Category */}
-      {edit === 'category'
-        ? <span className="txn-category txn-editing"><InlineCellEdit kind="picker" value={t.category_id} options={categoryOptions} placeholder="Category…" accounts={accountOptions.filter(a => a.id !== t.account_id)} onTransfer={v => commit('transfer', v)} onCommit={v => commit('category', v)} onCancel={close} /></span>
-        : <span className="txn-category txn-editable" title={editTitle} onClick={startEdit('category')}>{categoryDisplay}</span>}
+      {editing
+        ? <span className="txn-edit-field" onClick={stop}>
+            <FilterCombo options={categoryOptions} value={draft.category_id} placeholder="Category…" width={140}
+              onChange={v => setDraft(d => ({ ...d, category_id: v }))} />
+          </span>
+        : <span className="txn-category">{categoryDisplay}</span>}
 
       {/* Memo */}
-      {edit === 'memo'
-        ? <span className="txn-memo txn-editing"><InlineCellEdit kind="memo" value={t.memo} placeholder="Memo…" onCommit={v => commit('memo', v)} onCancel={close} /></span>
-        : <span className="txn-memo txn-editable" title={editTitle} onClick={startEdit('memo')}>{t.memo || <span className="txn-cell-empty">+ memo</span>}</span>}
+      {editing
+        ? <input className="input txn-edit-field" type="text" value={draft.memo} placeholder="Memo…"
+            onClick={stop} onKeyDown={keyNav}
+            onChange={e => setDraft(d => ({ ...d, memo: e.target.value }))} />
+        : <span className="txn-memo">{t.memo || <span className="txn-cell-empty">+ memo</span>}</span>}
 
       {/* Amount */}
-      {edit === 'amount'
-        ? <span className={`${amountClass} txn-amount-col txn-editing`}><InlineCellEdit kind="amount" value={t.amount} onCommit={v => commit('amount', v)} onCancel={close} /></span>
-        : <span className={`${amountClass} txn-amount-col txn-editable`} title={editTitle} onClick={startEdit('amount')}>{fmtMoney(t.amount || 0)}</span>}
+      {editing
+        ? <input className="input txn-edit-field txn-amount-col" type="text" inputMode="decimal"
+            value={draft.amount} placeholder="0.00" onClick={stop} onKeyDown={keyNav}
+            onChange={e => setDraft(d => ({ ...d, amount: e.target.value }))} />
+        : <span className={`${amountClass} txn-amount-col`}>{fmtMoney(t.amount || 0)}</span>}
 
-      {showBalance && (
+      {/* Balance — or, while editing, the Save / Cancel / Delete cluster */}
+      {showBalance && !editing && (
         <span className="txn-balance txn-amount-col">
           {t.balance !== null && t.balance !== undefined ? fmtMoney(t.balance) : ''}
         </span>
       )}
-      <div className="txn-actions">
-        <button className="btn btn-ghost" onClick={onEdit}>Edit</button>
-        <button className="btn btn-ghost btn-danger" onClick={onDelete}>Delete</button>
-      </div>
+
+      {editing && (
+        <div className="txn-edit-actions" onClick={stop}>
+          <button className="txn-edit-act txn-edit-act--save"   title="Save"   onClick={save}>✓</button>
+          <button className="txn-edit-act txn-edit-act--cancel" title="Cancel" onClick={cancel}>✗</button>
+          <button className="txn-edit-act txn-edit-act--delete" title="Delete" onClick={(e) => { stop(e); onDelete() }}>🗑</button>
+        </div>
+      )}
     </div>
   )
 }

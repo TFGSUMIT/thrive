@@ -198,27 +198,62 @@
     color: #f59e0b !important;
 }
 
-/* ── Row actions (hover reveal) ────────────────────────────────────────────── */
-.txn-actions {
-    position: absolute;
-    top: 50%;
-    right: 8px;
-    transform: translateY(-50%);
-    display: flex;
-    gap: 4px;
-    background: var(--bg-elevated);
-    padding: 2px 4px;
-    border-radius: var(--radius);
-    box-shadow: 0 0 16px var(--bg-elevated);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.15s;
+/* ── Row edit mode (#1): tap a row → its cells become controls ──────────────── */
+/* a non-editing row is tappable to edit (works on touch — no hover needed) */
+.txn-row:not(.txn-row--editing) {
+    cursor: pointer;
 }
 
-.txn-row:hover .txn-actions {
-    opacity: 1;
-    pointer-events: auto;
+/* the row being edited: reserve a right gutter for the action cluster + lift it */
+.txn-row--editing {
+    padding-right: 136px;
+    background: var(--bg-elevated);
+    box-shadow: inset 2px 0 0 var(--accent);
 }
+
+/* inputs/pickers sit snug in their grid cell */
+.txn-edit-field {
+    min-width: 0;
+}
+.txn-edit-field.input,
+.txn-edit-field > .input,
+.txn-edit-field .creatable-wrap,
+.txn-edit-field input {
+    width: 100%;
+    box-sizing: border-box;
+}
+input.txn-edit-field {
+    padding: 5px 7px;
+    font-size: 12px;
+}
+
+/* Save / Cancel / Delete cluster — lives in the reserved right gutter */
+.txn-edit-actions {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    display: flex;
+    gap: 6px;
+}
+.txn-edit-act {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg-surface);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    transition: background 0.12s, border-color 0.12s;
+}
+.txn-edit-act--save   { color: var(--color-success, #22c55e); }
+.txn-edit-act--save:hover   { background: rgba(34,197,94,0.14);  border-color: var(--color-success, #22c55e); }
+.txn-edit-act--cancel:hover { background: var(--bg-elevated); }
+.txn-edit-act--delete:hover { background: rgba(239,68,68,0.14);  border-color: var(--color-danger, #ef4444); }
 
 /* ── Clickable account link ────────────────────────────────────────────────── */
 .txn-account-link {
@@ -237,7 +272,8 @@
 }
 
 .txn-row--selected {
-    background: var(--accent-dim) !important;
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    box-shadow: inset 3px 0 0 var(--accent);
 }
 
 /* ── Matched pair highlight ────────────────────────────────────────────────── */
