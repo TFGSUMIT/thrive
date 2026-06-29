@@ -31,6 +31,12 @@ async def auth_gate(request: Request, call_next):
     if not user:
         return JSONResponse({"detail": "Not authenticated"}, status_code=401)
     request.state.user = user
+    # per-module access enforcement (#25): module routes require the viewer's
+    # level for the method (read for GET/HEAD, write for mutations); admins bypass.
+    # Core/platform routes own no module → pass through to their own checks.
+    mid = mod_registry.module_for_path(path)
+    if mid and not mod_registry.access_ok(user, mid, request.method):
+        return JSONResponse({"detail": "You don't have access to this module"}, status_code=403)
     return await call_next(request)
 
 # ── core routers ──────────────────────────────────────────────────────────────

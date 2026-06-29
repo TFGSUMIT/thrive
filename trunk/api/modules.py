@@ -184,6 +184,7 @@ def _load_one(app: FastAPI, m: dict):
             spec.loader.exec_module(mod)
             if hasattr(mod, "router"):
                 app.include_router(mod.router)
+                _register_route_owner(m["id"], mod.router)   # #25: path → module map
                 print(f"[modules] loaded {m['id']} → {dotpath}")
             else:
                 print(f"[modules] {dotpath} has no 'router' attribute")
@@ -310,6 +311,53 @@ def set_access(user_id: int, module_id: str, level: str) -> bool:
         return True
     finally:
         conn.close()
+
+
+# ── server-side enforcement (#25): resolve a request path → its owning module ──
+# Built as each module's routers register (see _load_one). A module owns every
+# request whose top-level path segment matches one of its router prefixes
+# (verified collision-free across modules + distinct from core paths).
+_PREFIX_OWNER: dict[str, str] = {}      # first path segment -> module_id
+_SAFE_METHODS = frozenset({"GET", "HEAD"})
+
+def _register_route_owner(module_id: str, router) -> None:
+    """Record the top-level path segments a module's routes own, so the auth gate
+    can map an incoming request to its module and enforce access."""
+    for route in getattr(router, "routes", []):
+        seg = (getattr(route, "path", "") or "").lstrip("/").split("/", 1)[0]
+        if seg:
+            _PREFIX_OWNER.setdefault(seg, module_id)
+
+def module_for_path(path: str) -> str | None:
+    """The module owning this request path (by top-level segment), or None for
+    core/platform routes (which run their own auth checks)."""
+    seg = path.lstrip("/").split("/", 1)[0]
+    return _PREFIX_OWNER.get(seg)
+
+def viewer_level(user, module_id: str) -> str:
+    """The current viewer's access level for one module. Admins → 'write';
+    everyone else is 'none' unless explicitly granted (Household = user_id 0,
+    a logged-in profile by its id). Mirrors viewer_levels() for a single module."""
+    if user and user.get("role") == "admin":
+        return "write"
+    prof = (user or {}).get("profile")
+    key = prof["id"] if prof else HOUSEHOLD_UID
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT level FROM module_access WHERE user_id=? AND module_id=?",
+                           (key, module_id)).fetchone()
+        return row["level"] if row else "none"
+    finally:
+        conn.close()
+
+def access_ok(user, module_id: str, method: str) -> bool:
+    """Whether the viewer may make this request: safe methods (GET/HEAD) need
+    'read', mutations need 'write'. 'view' and 'none' are both insufficient
+    (view = the frontend's locked-page state, no data access)."""
+    level = viewer_level(user, module_id)
+    if method in _SAFE_METHODS:
+        return level in ("read", "write")
+    return level == "write"
 
 
 def _set_module_field(module_id: str, column: str, value: str | None) -> bool:
