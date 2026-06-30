@@ -54,6 +54,7 @@ export default function TransactionsPage({ initial = {}, onBalanceChange }) {
     const [showAdd, setShowAdd] = useState(false)
     const [showImport, setShowImport] = useState(!!initial.plaidRows)
     const [editingId, setEditingId] = useState(null)
+    const [inlineEditId, setInlineEditId] = useState(null)   // the one row open for inline edit (#55)
     const [verifyId, setVerifyId] = useState(null)
     const [plaidPreload, setPlaidPreload] = useState(initial.plaidRows || null)
 
@@ -388,10 +389,10 @@ export default function TransactionsPage({ initial = {}, onBalanceChange }) {
                     <button className="btn" onClick={clearFilters} title="Clear filters">Clear</button>
                 )}
                 <button className="btn btn-primary" onClick={() => {
-                    setShowAdd(true); setShowImport(false); setEditingId(null); setPlaidPreload(null)
+                    setShowAdd(true); setShowImport(false); setEditingId(null); setInlineEditId(null); setPlaidPreload(null)
                 }}>+ Add</button>
                 <button className="btn" onClick={() => {
-                    setShowImport(true); setShowAdd(false); setEditingId(null); setPlaidPreload(null)
+                    setShowImport(true); setShowAdd(false); setEditingId(null); setInlineEditId(null); setPlaidPreload(null)
                 }}>Import</button>
                 {accountHasPlaid && (
                     <div className="txn-plaid-sync">
@@ -533,9 +534,13 @@ export default function TransactionsPage({ initial = {}, onBalanceChange }) {
                                     categoryOptions={categoryOptions} payeeOptions={payeeOptions} accountOptions={accountOptions}
                                     onPatch={handlePatch}
                     onSaveSplit={handleSaveSplit}
+                    active={inlineEditId === t.id}
+                    onActivate={(id) => { setInlineEditId(id); setShowAdd(false); setShowImport(false); setEditingId(null); setVerifyId(null) }}
+                    onDeactivate={() => setInlineEditId(null)}
                                     selected={selected.has(t.id)}
                                     onSelect={() => toggleSelect(t.id)}
                                     onEdit={() => {
+                                        setInlineEditId(null)
                                         if (t.cleared === 'Unverified' && t.matched_transaction_id) {
                                             setVerifyId(t.id); setEditingId(null)
                                         } else {
