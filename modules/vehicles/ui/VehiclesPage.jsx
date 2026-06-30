@@ -531,10 +531,39 @@ function VehicleCard({ vehicle, onDeleted, showToast, showConfirm }) {
 
       {expanded && !editing && (
         <div style={{ borderTop: "1px solid var(--border-color,#2a2a2a)", padding: "12px 16px" }}>
-          {vehicle.vin && (
+          {!isFormer && vehicle.vin && (
             <div style={{ marginBottom: 12 }}>
               <span style={{ ...label, marginRight: 8 }}>VIN</span>
               <span style={{ fontFamily: "monospace", fontSize: 12, color: "var(--text-secondary,#aaa)" }}>{vehicle.vin}</span>
+            </div>
+          )}
+
+          {/* former cars hide maintenance (#38) — still show the car's basic
+              details so the record isn't just a disposition (#61) */}
+          {isFormer && (
+            <div style={{ ...card, marginBottom: 12 }}>
+              <div style={sectionHead}><span>Vehicle</span></div>
+              <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: "10px 14px" }}>
+                {[
+                  { k: "Year",  v: vehicle.year  || "—" },
+                  { k: "Make",  v: vehicle.make  || "—" },
+                  { k: "Model", v: vehicle.model || "—" },
+                  { k: "Trim",  v: vehicle.trim  || "—" },
+                  { k: "Plate", v: vehicle.plate || "—" },
+                  { k: "VIN",   v: vehicle.vin   || "—" },
+                ].map(s => (
+                  <div key={s.k}>
+                    <div style={{ ...label, marginBottom: 2 }}>{s.k}</div>
+                    <div style={{ fontSize: 13, color: "var(--text-secondary,#ccc)", fontFamily: s.k === "VIN" ? "monospace" : undefined, wordBreak: "break-all" }}>{s.v}</div>
+                  </div>
+                ))}
+                {vehicle.notes && (
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <div style={{ ...label, marginBottom: 2 }}>Notes</div>
+                    <div style={{ fontSize: 12, color: "var(--text-tertiary,#999)" }}>{vehicle.notes}</div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
