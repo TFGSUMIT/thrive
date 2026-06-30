@@ -44,11 +44,12 @@ export default function TransactionRow({
     if (editing) return
     if (fullFormOnly) { onEdit(); return }
     setDraft({
-      date:        t.date || '',
-      payee_id:    t.payee_id != null ? String(t.payee_id) : '',
-      category_id: t.category_id != null ? String(t.category_id) : '',
-      memo:        t.memo || '',
-      amount:      t.amount != null ? String(t.amount) : '',
+      date:                t.date || '',
+      payee_id:            t.payee_id != null ? String(t.payee_id) : '',
+      category_id:         t.category_id != null ? String(t.category_id) : '',
+      transfer_account_id: t.transfer_account_id != null ? String(t.transfer_account_id) : '',
+      memo:                t.memo || '',
+      amount:              t.amount != null ? String(t.amount) : '',
     })
     setEditing(true)
   }
@@ -66,6 +67,10 @@ export default function TransactionRow({
     if (memo !== (t.memo || '')) fields.memo = memo || null
     const amt = parseFloat(draft.amount)
     if (!isNaN(amt) && amt !== t.amount) fields.amount = amt
+    if (isTransfer) {
+      const tid = draft.transfer_account_id === '' ? null : Number(draft.transfer_account_id)
+      if (tid && tid !== (t.transfer_account_id ?? null)) fields.transfer_account_id = tid
+    }
     if (Object.keys(fields).length) onPatch?.(t.id, fields)
     setEditing(false); setDraft(null)
   }
@@ -152,15 +157,21 @@ export default function TransactionRow({
             {t.payee_name || (isUnverified ? t.import_description : null) || <span className="txn-cell-empty">+ payee</span>}
           </span>}
 
-      {/* Category — native dropdown for normal rows; a transfer's target stays
-          read-only inline (its badge) since re-pointing it needs the full form */}
-      {editing && !isTransfer
-        ? <select className="input txn-edit-field" value={draft.category_id} onClick={stop}
-            onChange={e => setDraft(d => ({ ...d, category_id: e.target.value }))}>
-            <option value="">— category —</option>
-            {categoryOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-          </select>
-        : <span className="txn-category" title={editing && isTransfer ? 'Edit the transfer target in the full form' : undefined}>{categoryDisplay}</span>}
+      {/* Category — native dropdown; a transfer's cell picks the target ACCOUNT
+          (re-points the transfer), a normal row picks a category */}
+      {!editing
+        ? <span className="txn-category">{categoryDisplay}</span>
+        : isTransfer
+          ? <select className="input txn-edit-field" value={draft.transfer_account_id} onClick={stop}
+              onChange={e => setDraft(d => ({ ...d, transfer_account_id: e.target.value }))}>
+              {accountOptions.filter(a => String(a.id) !== String(t.account_id)).map(o =>
+                <option key={o.id} value={o.id}>⇄ {o.label}</option>)}
+            </select>
+          : <select className="input txn-edit-field" value={draft.category_id} onClick={stop}
+              onChange={e => setDraft(d => ({ ...d, category_id: e.target.value }))}>
+              <option value="">— category —</option>
+              {categoryOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>}
 
       {/* Memo */}
       {editing

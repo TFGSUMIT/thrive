@@ -646,11 +646,13 @@ def update_transaction(transaction_id: int, body: TransactionUpdate, request: Re
     )
 
     if row["transfer_transaction_id"] is not None:
+        # mirror to the paired leg; if the target account changed, MOVE the leg to
+        # the new target (its account_id) so re-pointing a transfer stays consistent
         db.execute(
             """UPDATE transactions
-               SET transfer_account_id = ?, amount_cents = ?, date = ?, memo = ?, cleared = ?
+               SET account_id = ?, transfer_account_id = ?, amount_cents = ?, date = ?, memo = ?, cleared = ?
                WHERE id = ?""",
-            (new_account_id, -new_cents, new_date, new_memo, new_cleared,
+            (new_transfer_account_id, new_account_id, -new_cents, new_date, new_memo, new_cleared,
              row["transfer_transaction_id"])
         )
 
