@@ -2,7 +2,7 @@
 // VehiclesPage.jsx — Vehicle profiles, oil changes, tire tracking
 // thrive UI
 // =============================================================================
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import MPGPage, { MpgChart } from "./MPGPage";
 
 const API = "/api/vehicles";
@@ -48,7 +48,7 @@ function Field({ label: lbl, children }) {
 // ── vehicle form ───────────────────────────────────────────────────────────
 function VehicleForm({ initial = {}, onSave, onCancel, saving }) {
   const [f, setF] = useState({
-    nickname: "", year: "", make: "", model: "", trim: "", vin: "", plate: "", notes: "",
+    nickname: "", year: "", make: "", model: "", trim: "", vin: "", plate: "", notes: "", color: "",
     status: "active", disposed_date: "", disposed_price: "", disposed_mileage: "", disposed_to: "", disposed_note: "",
     ...initial,
   });
@@ -66,6 +66,15 @@ function VehicleForm({ initial = {}, onSave, onCancel, saving }) {
       </div>
       <Field label="VIN"><input style={input} value={f.vin} onChange={set("vin")} placeholder="17-character VIN" /></Field>
       <Field label="Notes"><input style={input} value={f.notes} onChange={set("notes")} placeholder="Optional" /></Field>
+
+      <Field label="Color">
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input type="color" value={f.color || "#3b82f6"} onChange={set("color")}
+            style={{ width: 42, height: 32, padding: 0, border: "1px solid var(--border-color,#333)", borderRadius: 6, background: "var(--bg-tertiary,#222)", cursor: "pointer" }} />
+          <span style={{ fontFamily: "monospace", fontSize: 12, color: "var(--text-tertiary,#888)" }}>{f.color || "none"}</span>
+          {f.color && <button style={{ ...btnSecondary, padding: "4px 10px" }} onClick={() => setF(p => ({ ...p, color: "" }))}>Clear</button>}
+        </div>
+      </Field>
 
       <Field label="Status">
         <select style={input} value={f.status} onChange={set("status")}>
@@ -487,7 +496,7 @@ function VehicleCard({ vehicle, onDeleted, showToast, showConfirm }) {
   const isFormer   = vehicle.status === "former";
 
   return (
-    <div style={{ ...card, marginBottom: 12, opacity: isFormer ? 0.62 : 1 }}>
+    <div style={{ ...card, marginBottom: 12, opacity: isFormer ? 0.62 : 1, borderLeft: vehicle.color ? `3px solid ${vehicle.color}` : card.border }}>
       {/* header row */}
       <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => !editing && setExpanded(e => !e)}>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -617,6 +626,25 @@ export default function VehiclesPage({ showToast: _showToast, showConfirm: _show
     finally { setSaving(false); }
   };
 
+  // drag-to-reorder (#37): the order is your ownership order. Reorder within a
+  // group (active / former); persist the new order to the server.
+  const dragIndex = useRef(null);
+  const onDrop = (toIdx) => (e) => {
+    e.preventDefault();
+    const from = dragIndex.current;
+    dragIndex.current = null;
+    if (from == null || from === toIdx) return;
+    if (vehicles[from]?.status !== vehicles[toIdx]?.status) return;   // within a group only
+    const next = [...vehicles];
+    const [moved] = next.splice(from, 1);
+    next.splice(toIdx, 0, moved);
+    setVehicles(next);
+    fetch(`${API}/order`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: next.map(x => x.id) }),
+    }).catch(() => showToast?.("Couldn't save order", "error"));
+  };
+
   return (
     <div style={{ padding: "1.5rem 1.5rem 3rem", maxWidth: 700, margin: "0 auto" }}>
       {/* tab bar */}
@@ -662,14 +690,23 @@ export default function VehiclesPage({ showToast: _showToast, showConfirm: _show
           const prev = vehicles[i - 1];
           const showFormerHeader = v.status === "former" && (!prev || prev.status !== "former");
           return (
-            <div key={v.id}>
+            <div key={v.id} onDragOver={(e) => e.preventDefault()} onDrop={onDrop(i)}>
               {showFormerHeader && (
                 <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "20px 2px 12px" }}>
                   <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--text-tertiary,#666)" }}>Former vehicles</span>
                   <div style={{ flex: 1, height: 1, background: "var(--border-color,#2a2a2a)" }} />
                 </div>
               )}
-              <VehicleCard vehicle={v} onDeleted={load} showToast={showToast} showConfirm={showConfirm} />
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 4 }}>
+                <div draggable
+                  onDragStart={() => { dragIndex.current = i; }}
+                  onDragEnd={() => { dragIndex.current = null; }}
+                  title="Drag to reorder (your ownership order)"
+                  style={{ cursor: "grab", color: "var(--text-tertiary,#555)", fontSize: 16, lineHeight: 1, padding: "14px 2px 0", userSelect: "none", flexShrink: 0 }}>⠿</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <VehicleCard vehicle={v} onDeleted={load} showToast={showToast} showConfirm={showConfirm} />
+                </div>
+              </div>
             </div>
           );
         })
