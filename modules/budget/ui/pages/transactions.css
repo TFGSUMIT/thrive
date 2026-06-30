@@ -47,7 +47,7 @@
 
 .txn-row {
     display: grid;
-    grid-template-columns: 20px 28px 132px 1fr 1fr 1fr 100px;
+    grid-template-columns: 20px 28px 120px 1fr 1fr 1fr 100px;
     align-items: center;
     padding: 8px 12px;
     border-bottom: 1px solid var(--border);
@@ -57,11 +57,11 @@
 }
 
 .txn-table.has-balance .txn-row {
-    grid-template-columns: 20px 28px 132px 1fr 1fr 1fr 100px 100px;
+    grid-template-columns: 20px 28px 120px 1fr 1fr 1fr 100px 100px;
 }
 
 .txn-table.all-accounts .txn-row {
-    grid-template-columns: 20px 28px 132px 0.8fr 1fr 1fr 1fr 100px;
+    grid-template-columns: 20px 28px 120px 0.8fr 1fr 1fr 1fr 100px;
 }
 
 .txn-row:last-child {
@@ -226,15 +226,22 @@ input.txn-edit-field {
     padding: 5px 6px;
     font-size: 12px;
 }
-/* date: tighten so the native calendar icon fits beside the value (wider date
-   column gives it room — see grid-template-columns) */
+/* native dropdowns for payee/category — obvious, touch-friendly, never clipped */
+select.txn-edit-field {
+    padding: 4px 6px;
+    font-size: 12px;
+    cursor: pointer;
+}
+/* date is a fixed-size value, so shrink-wrap the field (don't stretch to the
+   cell) — that pulls the native calendar icon right up next to the date */
 input[type="date"].txn-edit-field {
-    padding: 5px 2px 5px 5px;
+    width: auto;
+    padding: 5px 4px;
     font-size: 11px;
 }
 input[type="date"].txn-edit-field::-webkit-calendar-picker-indicator {
     padding: 0;
-    margin-left: 1px;
+    margin-left: 2px;
     opacity: 0.6;
 }
 

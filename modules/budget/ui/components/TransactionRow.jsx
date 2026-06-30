@@ -13,7 +13,6 @@
 // =============================================================================
 import { useState } from 'react'
 import { fmtMoney, fmtDate, CLEARED_LABEL, CLEARED_TITLE } from '../utils/constants'
-import FilterCombo from './FilterCombo'
 
 export default function TransactionRow({
   t, showBalance, showAccount, selected, onSelect,
@@ -142,23 +141,25 @@ export default function TransactionRow({
         </span>
       )}
 
-      {/* Payee */}
+      {/* Payee — native dropdown (obvious + touch-friendly, never clipped) */}
       {editing
-        ? <span className="txn-edit-field" onClick={stop}>
-            <FilterCombo options={payeeOptions} value={draft.payee_id} placeholder="Payee…" width={140}
-              onChange={v => setDraft(d => ({ ...d, payee_id: v }))} />
-          </span>
+        ? <select className="input txn-edit-field" value={draft.payee_id} onClick={stop}
+            onChange={e => setDraft(d => ({ ...d, payee_id: e.target.value }))}>
+            <option value="">— payee —</option>
+            {payeeOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
         : <span className="txn-payee">
             {t.payee_name || (isUnverified ? t.import_description : null) || <span className="txn-cell-empty">+ payee</span>}
           </span>}
 
-      {/* Category — a transfer's target is read-only inline (its badge); other
-          rows get the category picker */}
+      {/* Category — native dropdown for normal rows; a transfer's target stays
+          read-only inline (its badge) since re-pointing it needs the full form */}
       {editing && !isTransfer
-        ? <span className="txn-edit-field" onClick={stop}>
-            <FilterCombo options={categoryOptions} value={draft.category_id} placeholder="Category…" width={140}
-              onChange={v => setDraft(d => ({ ...d, category_id: v }))} />
-          </span>
+        ? <select className="input txn-edit-field" value={draft.category_id} onClick={stop}
+            onChange={e => setDraft(d => ({ ...d, category_id: e.target.value }))}>
+            <option value="">— category —</option>
+            {categoryOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
         : <span className="txn-category" title={editing && isTransfer ? 'Edit the transfer target in the full form' : undefined}>{categoryDisplay}</span>}
 
       {/* Memo */}
