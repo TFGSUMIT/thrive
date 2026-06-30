@@ -177,13 +177,20 @@ export default function TransactionRow({
               else                           setDraft(d => ({ ...d, category_id: '', transfer_account_id: '' }))
             }}>
             <option value="">— category —</option>
-            <optgroup label="Category">
-              {categoryOptions.map(o => <option key={`c${o.id}`} value={`cat:${o.id}`}>{o.label}</option>)}
-            </optgroup>
-            <optgroup label="Transfer to">
-              {accountOptions.filter(a => String(a.id) !== String(t.account_id)).map(o =>
-                <option key={`a${o.id}`} value={`xfer:${o.id}`}>⇄ {o.label}</option>)}
-            </optgroup>
+            {/* a transfer row leads with the Transfer-to group (its current value);
+                a normal row leads with categories */}
+            {(isTransfer
+              ? ['Transfer to', 'Category']
+              : ['Category', 'Transfer to']
+            ).map(group => group === 'Category'
+              ? <optgroup key="cat" label="Category">
+                  {categoryOptions.map(o => <option key={`c${o.id}`} value={`cat:${o.id}`}>{o.label}</option>)}
+                </optgroup>
+              : <optgroup key="xfer" label="Transfer to">
+                  {accountOptions.filter(a => String(a.id) !== String(t.account_id)).map(o =>
+                    <option key={`a${o.id}`} value={`xfer:${o.id}`}>⇄ {o.label}</option>)}
+                </optgroup>
+            )}
           </select>}
 
       {/* Memo */}
