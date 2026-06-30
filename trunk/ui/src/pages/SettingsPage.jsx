@@ -582,7 +582,7 @@ function PowerSection() {
 
   const actions = info.actions || []
   return (
-    <CollapsibleCard title="Power" defaultOpen={false}>
+    <CollapsibleCard title="Power" defaultOpen={true}>
       <div style={{ ...body, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ fontSize: 11, color: 'var(--text-tertiary,#888)', lineHeight: 1.6 }}>
           Control the physical appliance serving thrive. Reboot &amp; shut down act on the hardware; restart bounces just the app.
@@ -662,12 +662,14 @@ export default function SettingsPage() {
         <UISection />
       </CollapsibleCard>
 
+      {/* Power — appliance hardware/app controls; sits with the device (UI)
+          settings and opens by default so it's easy to find. Self-hides off
+          thriveOS (the API reports available:false). */}
+      {user?.role === 'admin' && <PowerSection />}
+
       <CollapsibleCard title="Modules">
         <ModulesSection />
       </CollapsibleCard>
-
-      {/* Power — appliance hardware/app controls; self-hides off thriveOS */}
-      {user?.role === 'admin' && <PowerSection />}
 
       {/* Module settings panels — discovered from each active module's ui/index.jsx */}
       {modulePanels.map(m => {
