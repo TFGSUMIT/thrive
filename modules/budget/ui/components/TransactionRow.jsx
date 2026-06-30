@@ -250,14 +250,14 @@ export default function TransactionRow({
       <div className="txn-split-edit" onClick={stop}>
         {draft.splits.map((line, i) => (
           <div key={i} className="txn-split-line">
-            <select className="input" value={line.category_id}
+            <select className="input txn-split-cat" value={line.category_id}
               onChange={e => updateLine(i, { category_id: e.target.value })}>
               <option value="">— category —</option>
               {categoryOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
             </select>
-            <input className="input txn-amount-col" type="text" inputMode="decimal" placeholder="0.00"
+            <input className="input txn-amount-col txn-split-amt" type="text" inputMode="decimal" placeholder="0.00"
               value={line.amount} onChange={e => updateLine(i, { amount: e.target.value })} />
-            <button className="txn-edit-act txn-edit-act--cancel" title="Remove line" onClick={() => removeLine(i)}>✗</button>
+            <button className="txn-edit-act txn-edit-act--cancel txn-split-rm" title="Remove line" onClick={() => removeLine(i)}>✗</button>
           </div>
         ))}
         <div className="txn-split-foot">
