@@ -4,8 +4,9 @@ Description=Sprout kiosk — thrive UI fullscreen (cage + chromium)
 # in build.sh); the `dev` image has no `splash`, so this is skipped and you get a
 # normal console login instead.
 ConditionKernelCommandLine=splash
-# wait for the stack; on first boot thrive builds for minutes (the ExecStartPre
-# below also polls :9500 so we don't flash a connection-refused page)
+# the kiosk launches straight onto a local thrive-logo holding page (#73) which
+# polls :9500 itself and swaps to the app once it's up — so no blocking wait here
+# and no black/"connection refused" flash while thrive starts.
 Wants=thrive.service
 After=thrive.service systemd-user-sessions.service plymouth-quit-wait.service
 # take tty1 from the console getty
@@ -34,7 +35,6 @@ StandardOutput=journal
 StandardError=journal
 UtmpIdentifier=tty1
 UtmpMode=user
-ExecStartPre=/usr/local/bin/sprout-kiosk-wait
 ExecStart=/usr/bin/cage -- /usr/local/bin/sprout-kiosk-browser
 Restart=always
 RestartSec=3

@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>thrive</title>
+<style>
+  /* Matches the plymouth splash: thrive logo on --bg-primary (#0f0f0f), gentle
+     pulse so a long first boot never looks frozen. The kiosk loads this the
+     instant chromium starts and stays here until the local stack answers, so the
+     boot sequence carries the logo straight through to the app — no black gap,
+     no "can't be reached" page. (#73) */
+  html, body { margin: 0; height: 100%; background: #0f0f0f; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  img  { width: 40vw; max-width: 480px; height: auto;
+         animation: pulse 3.2s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: .62 } 50% { opacity: 1 } }
+</style>
+</head>
+<body>
+  <img src="logo.png" alt="thrive">
+  <script>
+    // Poll the local stack; swap to the app once it answers. no-cors so a
+    // file:// page can probe http://localhost without a CORS preflight — the
+    // request only rejects on connection-refused (stack not up yet) and resolves
+    // on any response (stack up), which is exactly the signal we need.
+    function check() {
+      fetch('http://localhost:9500/', { mode: 'no-cors', cache: 'no-store' })
+        .then(function () { location.replace('http://localhost:9500/'); })
+        .catch(function () { setTimeout(check, 1200); });
+    }
+    check();
+  </script>
+</body>
+</html>
