@@ -113,12 +113,18 @@ cp -a "$ROOTFS"/boot/firmware/. /mnt/sprout/boot/firmware/
 # config.txt — on Pi 5 the firmware auto-selects kernel_2712.img + bcm2712-rpi-5-b.dtb
 # by board, and auto_initramfs loads the matching initramfs_2712 alongside it. So
 # this stays minimal: 64-bit, serial console for headless debug.
+# usb_max_current_enable=1 lifts the Pi 5's default 600 mA USB cap (it otherwise
+# only raises it when it confirms a 5 A USB-C PD supply). Without it, a bus-powered
+# USB-C touch panel browns out on boot and its digitizer never enumerates — touch
+# silently dies on every reboot. Baking it in keeps touch working on the sapling/
+# tree (touch) editions across re-flashes. (#42)
 cat > /mnt/sprout/boot/firmware/config.txt <<'EOF'
 # sprout-pi boot config — Raspberry Pi 5 (BCM2712), headless thrive appliance.
 [all]
 arm_64bit=1
 enable_uart=1
 auto_initramfs=1
+usb_max_current_enable=1
 EOF
 
 # loglevel/audit: same console-noise rationale as the amd64 image. serial0 is the
