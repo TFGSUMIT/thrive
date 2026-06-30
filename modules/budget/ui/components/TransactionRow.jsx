@@ -79,6 +79,14 @@ export default function TransactionRow({
 
   const stop = (e) => e.stopPropagation()
 
+  const actionButtons = (
+    <>
+      <button className="txn-edit-act txn-edit-act--save"   title="Save"   onClick={save}>✓</button>
+      <button className="txn-edit-act txn-edit-act--cancel" title="Cancel" onClick={cancel}>✗</button>
+      <button className="txn-edit-act txn-edit-act--delete" title="Delete" onClick={(e) => { stop(e); onDelete() }}>🗑</button>
+    </>
+  )
+
   const categoryText = t.category_name || (isUnverified ? t.import_category : null)
   const categoryDisplay = t.has_splits
     ? <span className="split-badge">split</span>
@@ -167,19 +175,19 @@ export default function TransactionRow({
             onChange={e => setDraft(d => ({ ...d, amount: e.target.value }))} />
         : <span className={`${amountClass} txn-amount-col`}>{fmtMoney(t.amount || 0)}</span>}
 
-      {/* Balance — or, while editing, the Save / Cancel / Delete cluster */}
-      {showBalance && !editing && (
-        <span className="txn-balance txn-amount-col">
-          {t.balance !== null && t.balance !== undefined ? fmtMoney(t.balance) : ''}
-        </span>
+      {/* Balance cell — while editing it holds the Save / Cancel / Delete cluster
+          (in-flow in the same grid slot, so every column stays aligned) */}
+      {showBalance && (
+        editing
+          ? <div className="txn-edit-actions" onClick={stop}>{actionButtons}</div>
+          : <span className="txn-balance txn-amount-col">
+              {t.balance !== null && t.balance !== undefined ? fmtMoney(t.balance) : ''}
+            </span>
       )}
 
-      {editing && (
-        <div className="txn-edit-actions" onClick={stop}>
-          <button className="txn-edit-act txn-edit-act--save"   title="Save"   onClick={save}>✓</button>
-          <button className="txn-edit-act txn-edit-act--cancel" title="Cancel" onClick={cancel}>✗</button>
-          <button className="txn-edit-act txn-edit-act--delete" title="Delete" onClick={(e) => { stop(e); onDelete() }}>🗑</button>
-        </div>
+      {/* views with no balance column (all-accounts): float the cluster at the right */}
+      {!showBalance && editing && (
+        <div className="txn-edit-actions txn-edit-actions--float" onClick={stop}>{actionButtons}</div>
       )}
     </div>
   )

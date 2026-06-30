@@ -47,7 +47,7 @@
 
 .txn-row {
     display: grid;
-    grid-template-columns: 20px 28px 110px 1fr 1fr 1fr 100px;
+    grid-template-columns: 20px 28px 132px 1fr 1fr 1fr 100px;
     align-items: center;
     padding: 8px 12px;
     border-bottom: 1px solid var(--border);
@@ -57,11 +57,11 @@
 }
 
 .txn-table.has-balance .txn-row {
-    grid-template-columns: 20px 28px 110px 1fr 1fr 1fr 100px 100px;
+    grid-template-columns: 20px 28px 132px 1fr 1fr 1fr 100px 100px;
 }
 
 .txn-table.all-accounts .txn-row {
-    grid-template-columns: 20px 28px 110px 0.8fr 1fr 1fr 1fr 100px;
+    grid-template-columns: 20px 28px 132px 0.8fr 1fr 1fr 1fr 100px;
 }
 
 .txn-row:last-child {
@@ -204,14 +204,14 @@
     cursor: pointer;
 }
 
-/* the row being edited: reserve a right gutter for the action cluster + lift it */
+/* the row being edited: just lift it — no padding hacks, so every control stays
+   aligned under its column header (the actions sit in the balance cell) */
 .txn-row--editing {
-    padding-right: 136px;
     background: var(--bg-elevated);
     box-shadow: inset 2px 0 0 var(--accent);
 }
 
-/* inputs/pickers sit snug in their grid cell */
+/* inputs/pickers fill their grid cell exactly (keeps column alignment) */
 .txn-edit-field {
     min-width: 0;
 }
@@ -223,31 +223,48 @@
     box-sizing: border-box;
 }
 input.txn-edit-field {
-    padding: 5px 7px;
+    padding: 5px 6px;
     font-size: 12px;
 }
+/* date: tighten so the native calendar icon fits beside the value (wider date
+   column gives it room — see grid-template-columns) */
+input[type="date"].txn-edit-field {
+    padding: 5px 2px 5px 5px;
+    font-size: 11px;
+}
+input[type="date"].txn-edit-field::-webkit-calendar-picker-indicator {
+    padding: 0;
+    margin-left: 1px;
+    opacity: 0.6;
+}
 
-/* Save / Cancel / Delete cluster — lives in the reserved right gutter */
+/* Save / Cancel / Delete — compact cluster, sits in the balance cell, right-aligned */
 .txn-edit-actions {
+    display: flex;
+    gap: 3px;
+    justify-content: flex-end;
+    align-items: center;
+}
+/* views with no balance column (all-accounts): float at the right edge */
+.txn-edit-actions--float {
     position: absolute;
     top: 50%;
-    right: 12px;
+    right: 10px;
     transform: translateY(-50%);
-    display: flex;
-    gap: 6px;
 }
 .txn-edit-act {
-    width: 30px;
-    height: 30px;
+    width: 23px;
+    height: 23px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: var(--radius);
+    border-radius: 5px;
     border: 1px solid var(--border);
     background: var(--bg-surface);
     cursor: pointer;
-    font-size: 14px;
+    font-size: 11px;
     line-height: 1;
+    padding: 0;
     transition: background 0.12s, border-color 0.12s;
 }
 .txn-edit-act--save   { color: var(--color-success, #22c55e); }
