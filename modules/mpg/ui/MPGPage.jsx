@@ -789,7 +789,7 @@ export default function MPGPage({ showToast, showConfirm }) {
                     style={{ ...inputStyle, fontSize: 12 }}
                   >
                     <option value="">— unlinked —</option>
-                    {vehicles.map(v => <option key={v.id} value={v.id}>{vehName(v)}</option>)}
+                    {vehicles.filter(v => v.status !== "former").map(v => <option key={v.id} value={v.id}>{vehName(v)}</option>)}
                   </select>
                 </div>
               )}
@@ -963,7 +963,8 @@ export default function MPGPage({ showToast, showConfirm }) {
                                       onChange={ev => editField("vehicle_id", ev.target.value ? parseInt(ev.target.value) : null)}
                                       style={{ ...inputStyle, fontSize: 12 }}>
                                       <option value="">— unlinked —</option>
-                                      {vehicles.map(v => <option key={v.id} value={v.id}>{vehName(v)}</option>)}
+                                      {/* hide former vehicles, but keep this entry's existing link visible */}
+                                      {vehicles.filter(v => v.status !== "former" || String(v.id) === String(editing.vehicle_id)).map(v => <option key={v.id} value={v.id}>{vehName(v)}</option>)}
                                     </select>
                                   </div>
                                 )}
