@@ -61,15 +61,20 @@ export default function TransactionRow({
     if (draft.date && draft.date !== t.date) fields.date = draft.date
     const pid = draft.payee_id === '' ? null : Number(draft.payee_id)
     if (pid !== (t.payee_id ?? null)) fields.payee_id = pid
-    const cid = draft.category_id === '' ? null : Number(draft.category_id)
-    if (cid !== (t.category_id ?? null)) fields.category_id = cid
     const memo = (draft.memo ?? '').trim()
     if (memo !== (t.memo || '')) fields.memo = memo || null
     const amt = parseFloat(draft.amount)
     if (!isNaN(amt) && amt !== t.amount) fields.amount = amt
-    if (isTransfer) {
-      const tid = draft.transfer_account_id === '' ? null : Number(draft.transfer_account_id)
-      if (tid && tid !== (t.transfer_account_id ?? null)) fields.transfer_account_id = tid
+    // category cell: transfer target XOR a category. Send transfer_account_id to
+    // make/keep a transfer; send a (non-null) category_id to make it a normal
+    // category — which the backend uses to convert away from a transfer/split.
+    if (draft.transfer_account_id !== '') {
+      const tid = Number(draft.transfer_account_id)
+      if (tid !== (t.transfer_account_id ?? null)) fields.transfer_account_id = tid
+    } else {
+      const cid = draft.category_id === '' ? null : Number(draft.category_id)
+      const changed = cid !== (t.category_id ?? null) || t.transfer_account_id != null
+      if (changed && cid != null) fields.category_id = cid
     }
     if (Object.keys(fields).length) onPatch?.(t.id, fields)
     setEditing(false); setDraft(null)
@@ -157,21 +162,29 @@ export default function TransactionRow({
             {t.payee_name || (isUnverified ? t.import_description : null) || <span className="txn-cell-empty">+ payee</span>}
           </span>}
 
-      {/* Category — native dropdown; a transfer's cell picks the target ACCOUNT
-          (re-points the transfer), a normal row picks a category */}
+      {/* Category — one native dropdown offering BOTH a category and a transfer
+          target, so you can switch a transfer back to a category (or vice-versa).
+          value is prefixed cat:/xfer: to disambiguate. */}
       {!editing
         ? <span className="txn-category">{categoryDisplay}</span>
-        : isTransfer
-          ? <select className="input txn-edit-field" value={draft.transfer_account_id} onClick={stop}
-              onChange={e => setDraft(d => ({ ...d, transfer_account_id: e.target.value }))}>
+        : <select className="input txn-edit-field" onClick={stop}
+            value={draft.transfer_account_id !== '' ? `xfer:${draft.transfer_account_id}`
+                 : draft.category_id !== '' ? `cat:${draft.category_id}` : ''}
+            onChange={e => {
+              const v = e.target.value
+              if (v.startsWith('xfer:'))     setDraft(d => ({ ...d, transfer_account_id: v.slice(5), category_id: '' }))
+              else if (v.startsWith('cat:')) setDraft(d => ({ ...d, category_id: v.slice(4), transfer_account_id: '' }))
+              else                           setDraft(d => ({ ...d, category_id: '', transfer_account_id: '' }))
+            }}>
+            <option value="">— category —</option>
+            <optgroup label="Category">
+              {categoryOptions.map(o => <option key={`c${o.id}`} value={`cat:${o.id}`}>{o.label}</option>)}
+            </optgroup>
+            <optgroup label="Transfer to">
               {accountOptions.filter(a => String(a.id) !== String(t.account_id)).map(o =>
-                <option key={o.id} value={o.id}>⇄ {o.label}</option>)}
-            </select>
-          : <select className="input txn-edit-field" value={draft.category_id} onClick={stop}
-              onChange={e => setDraft(d => ({ ...d, category_id: e.target.value }))}>
-              <option value="">— category —</option>
-              {categoryOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-            </select>}
+                <option key={`a${o.id}`} value={`xfer:${o.id}`}>⇄ {o.label}</option>)}
+            </optgroup>
+          </select>}
 
       {/* Memo */}
       {editing

@@ -611,14 +611,12 @@ def update_transaction(transaction_id: int, body: TransactionUpdate, request: Re
     if row is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-    new_account_id          = body.account_id          if body.account_id          is not None else row["account_id"]
-    new_payee_id            = body.payee_id            if body.payee_id            is not None else row["payee_id"]
-    new_cat_id              = body.category_id         if body.category_id         is not None else row["category_id"]
-    new_transfer_account_id = body.transfer_account_id if body.transfer_account_id is not None else row["transfer_account_id"]
-    new_cents               = to_cents(body.amount)    if body.amount              is not None else row["amount_cents"]
-    new_date                = body.date                if body.date                is not None else row["date"]
-    new_memo                = body.memo                if body.memo                is not None else row["memo"]
-    new_cleared             = row["cleared"]
+    new_account_id = body.account_id if body.account_id is not None else row["account_id"]
+    new_payee_id   = body.payee_id   if body.payee_id   is not None else row["payee_id"]
+    new_cents      = to_cents(body.amount) if body.amount is not None else row["amount_cents"]
+    new_date       = body.date if body.date is not None else row["date"]
+    new_memo       = body.memo if body.memo is not None else row["memo"]
+    new_cleared    = row["cleared"]
 
     if body.cleared is not None:
         if body.cleared.lower() == "none":
@@ -628,35 +626,54 @@ def update_transaction(transaction_id: int, body: TransactionUpdate, request: Re
         else:
             new_cleared = body.cleared
 
-    # newly converting a normal txn into a transfer? clear its category and (below)
-    # create the mirrored counterpart in the other account, exactly like POST does.
-    establishing_transfer = row["transfer_transaction_id"] is None and body.transfer_account_id is not None
-    if establishing_transfer:
+    was_transfer = row["transfer_transaction_id"] is not None
+    paired_id    = row["transfer_transaction_id"]
+
+    # The category cell sends EITHER a transfer_account_id (make/keep a transfer)
+    # OR a category_id (make it a normal category — converting away from a transfer
+    # and/or a split). Picking a category is the escape hatch out of transfer/split.
+    setting_transfer = body.transfer_account_id is not None
+    setting_category = body.category_id is not None
+
+    new_cat_id              = row["category_id"]
+    new_transfer_account_id = row["transfer_account_id"]
+    new_paired              = paired_id
+
+    if setting_transfer:
+        new_transfer_account_id = body.transfer_account_id
         new_cat_id = None
         if new_transfer_account_id == new_account_id:
             raise HTTPException(status_code=400, detail="Cannot transfer to the same account")
+    elif setting_category:
+        new_cat_id = body.category_id
+        new_transfer_account_id = None
+        db.execute("DELETE FROM splits WHERE transaction_id = ?", (transaction_id,))   # un-split
+
+    converting_from_transfer = was_transfer and setting_category          # un-transfer
+    establishing_transfer    = (not was_transfer) and setting_transfer
+    if converting_from_transfer:
+        new_paired = None   # break the pair link on this row
 
     db.execute(
         """UPDATE transactions
            SET account_id = ?, payee_id = ?, category_id = ?, transfer_account_id = ?,
-               amount_cents = ?, date = ?, memo = ?, cleared = ?
+               transfer_transaction_id = ?, amount_cents = ?, date = ?, memo = ?, cleared = ?
            WHERE id = ?""",
-        (new_account_id, new_payee_id, new_cat_id, new_transfer_account_id,
+        (new_account_id, new_payee_id, new_cat_id, new_transfer_account_id, new_paired,
          new_cents, new_date, new_memo, new_cleared, transaction_id)
     )
 
-    if row["transfer_transaction_id"] is not None:
-        # mirror to the paired leg; if the target account changed, MOVE the leg to
-        # the new target (its account_id) so re-pointing a transfer stays consistent
+    if converting_from_transfer:
+        db.execute("DELETE FROM transactions WHERE id = ?", (paired_id,))   # drop the orphaned leg
+    elif was_transfer:
+        # mirror to the paired leg; if the target changed, MOVE the leg to it
         db.execute(
             """UPDATE transactions
                SET account_id = ?, transfer_account_id = ?, amount_cents = ?, date = ?, memo = ?, cleared = ?
                WHERE id = ?""",
-            (new_transfer_account_id, new_account_id, -new_cents, new_date, new_memo, new_cleared,
-             row["transfer_transaction_id"])
+            (new_transfer_account_id, new_account_id, -new_cents, new_date, new_memo, new_cleared, paired_id)
         )
-
-    if establishing_transfer:
+    elif establishing_transfer:
         cur2 = db.execute(
             """INSERT INTO transactions
                (account_id, payee_id, category_id, transfer_account_id, amount_cents, date, memo, cleared)
@@ -664,9 +681,9 @@ def update_transaction(transaction_id: int, body: TransactionUpdate, request: Re
             (new_transfer_account_id, new_payee_id, new_account_id,
              -new_cents, new_date, new_memo, new_cleared)
         )
-        paired_id = cur2.lastrowid
-        db.execute("UPDATE transactions SET transfer_transaction_id = ? WHERE id = ?", (paired_id, transaction_id))
-        db.execute("UPDATE transactions SET transfer_transaction_id = ? WHERE id = ?", (transaction_id, paired_id))
+        pid = cur2.lastrowid
+        db.execute("UPDATE transactions SET transfer_transaction_id = ? WHERE id = ?", (pid, transaction_id))
+        db.execute("UPDATE transactions SET transfer_transaction_id = ? WHERE id = ?", (transaction_id, pid))
 
     db.commit()
     return {"id": transaction_id}
