@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Host-side executor for thrive Settings → Power controls (#39). thriveOS only.
+#
+# The thrive API runs in a container and can't power-cycle its own host, so it
+# drops a request file (request-<verb>) into the data dir, which is bind-mounted
+# from the host (/opt/thrive/trunk/data ⇄ /data). This unit, triggered by
+# thrive-power.path when such a file appears, consumes it and runs the matching
+# action. No privilege is granted to the container — the capability lives entirely
+# here, so a plain Docker host (no thriveOS) simply never has this watcher.
+#
+# The verb comes from the trusted FILENAME (the API validates it against an
+# allowlist before writing); nothing here ever executes file *contents*.
+set -euo pipefail
+CTRL=/opt/thrive/trunk/data/control
+shopt -s nullglob
+
+for req in "$CTRL"/request-*; do
+    verb=${req##*/request-}
+    rm -f "$req"                       # consume first, so a failed action can't loop
+    logger -t thrive-power "executing: ${verb}"
+    case "$verb" in
+        reboot)         exec systemctl reboot ;;
+        poweroff)       exec systemctl poweroff ;;
+        restart-stack)  ( cd /opt/thrive/trunk && ./thrive-compose.sh restart ) \
+                          || ( cd /opt/thrive/trunk && ./thrive-compose.sh up -d ) ;;
+        relaunch-kiosk) systemctl restart sprout-kiosk.service ;;
+        *)              logger -t thrive-power "ignoring unknown verb: ${verb}" ;;
+    esac
+done

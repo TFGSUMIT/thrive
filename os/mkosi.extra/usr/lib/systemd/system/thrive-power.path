@@ -1,0 +1,13 @@
+# thriveOS: watch for thrive power-control requests (#39). When the API drops a
+# request-<verb> file into the (host-side) data dir, fire thrive-power.service to
+# execute it. systemd path units watch the nearest existing ancestor, so this is
+# safe even before thrive-power-init creates the control dir on first boot.
+[Unit]
+Description=Watch for thrive power-control requests (#39)
+
+[Path]
+PathExistsGlob=/opt/thrive/trunk/data/control/request-*
+Unit=thrive-power.service
+
+[Install]
+WantedBy=multi-user.target

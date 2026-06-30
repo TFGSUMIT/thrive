@@ -546,6 +546,66 @@ function PermissionsSection() {
 }
 
 
+// ── Power controls (#39) — thriveOS appliance only, admin-only ────────────────
+// Hidden everywhere the host watcher isn't wired (e.g. bare/NAS prod): the API
+// reports available:false and this renders nothing. The buttons drop a request
+// file the host-side thrive-power.service executes.
+const POWER_BTNS = [
+  { action: 'reboot',         label: '⟳ Reboot',         danger: true,  confirm: 'Reboot this device now?' },
+  { action: 'poweroff',       label: '⏻ Shut down',      danger: true,  confirm: 'Shut down this device? It needs a physical power-cycle to come back.' },
+  { action: 'restart-stack',  label: '♻ Restart thrive', danger: false, confirm: 'Restart the thrive app? The UI will blink for a few seconds.' },
+  { action: 'relaunch-kiosk', label: '🖥 Relaunch kiosk', danger: false, confirm: 'Relaunch the kiosk display?' },
+]
+
+function PowerSection() {
+  const [info, setInfo]             = useState(null)
+  const [busy, setBusy]             = useState(null)
+  const [msg,  setMsg]              = useState(null)
+  const [confirming, setConfirming] = useState(null)
+
+  useEffect(() => { api.get('/system/power').then(setInfo).catch(() => setInfo({ available: false })) }, [])
+  if (!info || !info.available || !info.is_admin) return null
+
+  const run = async (action) => {
+    setConfirming(null); setBusy(action); setMsg(null)
+    try {
+      await api.post('/system/power', { action })
+      setMsg({
+        reboot:          'Rebooting… this device will drop offline for a moment.',
+        poweroff:        'Shutting down… this device is powering off.',
+        'restart-stack': 'Restarting thrive… the UI may blink.',
+        'relaunch-kiosk':'Relaunching the kiosk display…',
+      }[action] || 'Done.')
+    } catch (e) { setMsg(e.message || 'Failed') }
+    finally { setBusy(null) }
+  }
+
+  const actions = info.actions || []
+  return (
+    <CollapsibleCard title="Power" defaultOpen={false}>
+      <div style={{ ...body, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-tertiary,#888)', lineHeight: 1.6 }}>
+          Control the physical appliance serving thrive. Reboot &amp; shut down act on the hardware; restart bounces just the app.
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          {POWER_BTNS.filter(b => actions.includes(b.action)).map(b => (
+            confirming === b.action
+              ? <span key={b.action} style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-secondary,#aaa)' }}>{b.confirm}</span>
+                  <button style={{ ...btnS, color: 'var(--color-danger,#ef4444)', borderColor: 'var(--color-danger,#ef4444)' }} disabled={!!busy} onClick={() => run(b.action)}>Yes</button>
+                  <button style={btnS} onClick={() => setConfirming(null)}>No</button>
+                </span>
+              : <button key={b.action} disabled={!!busy}
+                  style={{ ...btnS, opacity: busy ? 0.5 : 1, ...(b.danger ? { color: 'var(--color-danger,#ef4444)', borderColor: 'var(--color-danger,#ef4444)' } : {}) }}
+                  onClick={() => { setConfirming(b.action); setMsg(null) }}>{b.label}</button>
+          ))}
+        </div>
+        {msg && <div style={{ fontSize: 12, color: 'var(--text-secondary,#aaa)' }}>{msg}</div>}
+      </div>
+    </CollapsibleCard>
+  )
+}
+
 export default function SettingsPage() {
   const { user, logout } = useAuth()
   // Module settings panels are declared in each module's ui/index.jsx and appear
@@ -605,6 +665,9 @@ export default function SettingsPage() {
       <CollapsibleCard title="Modules">
         <ModulesSection />
       </CollapsibleCard>
+
+      {/* Power — appliance hardware/app controls; self-hides off thriveOS */}
+      {user?.role === 'admin' && <PowerSection />}
 
       {/* Module settings panels — discovered from each active module's ui/index.jsx */}
       {modulePanels.map(m => {

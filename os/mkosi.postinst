@@ -26,6 +26,13 @@ enable_unit docker.service     # container engine
 enable_unit ssh.service        # remote admin
 enable_unit thrive.service     # the appliance: pulls the thrive repo + runs trunk/
 
+# power controls (#39): host-side watcher for Settings → Power (reboot/poweroff/
+# restart-stack/relaunch-kiosk). thrive-power.service is triggered by the .path,
+# not enabled directly. Appliance-only — the marker it drops surfaces the buttons
+# in thrive; a bare Docker host never has this.
+enable_unit thrive-power.path
+enable_unit thrive-power-init.service
+
 # networking: systemd-networkd brings up wired ethernet via DHCP (20-dhcp.network),
 # systemd-resolved provides DNS. This makes network-online.target reliably reached —
 # which thrive.service waits on before it can clone the repo + pull images.

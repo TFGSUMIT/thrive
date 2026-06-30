@@ -26,6 +26,12 @@ enable_unit docker.service     # container engine
 enable_unit ssh.service        # remote admin
 enable_unit thrive.service     # the appliance: pulls the thrive repo + runs trunk/
 enable_unit sprout-grow.service  # grow root to fill the SD card on first boot (MBR-safe)
+
+# power controls (#39): host-side watcher for Settings → Power (reboot/poweroff/
+# restart-stack/relaunch-kiosk). thrive-power.service is triggered by the .path,
+# not enabled directly. The marker it drops surfaces the buttons in thrive.
+enable_unit thrive-power.path
+enable_unit thrive-power-init.service
 # kiosk-vs-desktop session is decided at the END of this script, keyed on whether the
 # `desktop` profile installed lightdm — so the two editions never clobber each other.
 

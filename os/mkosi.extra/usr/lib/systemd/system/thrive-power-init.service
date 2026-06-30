@@ -1,0 +1,20 @@
+# thriveOS: prepare the thrive power-control channel (#39). Runs after the app is
+# up (thrive.service's ./data:/data mount creates the host data dir), then makes
+# the control dir and drops the `.available` marker the API feature-detects on.
+# This marker is what makes power controls appear in Settings — present only on a
+# thriveOS appliance, never on a bare Docker host.
+[Unit]
+Description=Prepare the thrive power-control channel (#39)
+After=thrive.service
+Wants=thrive.service
+ConditionPathExists=/opt/thrive/trunk
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# 0777 so the container (whatever uid it runs as) can drop request files; the dir
+# only ever holds request-* breadcrumbs the host consumes immediately.
+ExecStart=/bin/sh -c 'mkdir -p /opt/thrive/trunk/data/control && chmod 0777 /opt/thrive/trunk/data/control && : > /opt/thrive/trunk/data/control/.available'
+
+[Install]
+WantedBy=multi-user.target

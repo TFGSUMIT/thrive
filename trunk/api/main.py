@@ -149,6 +149,54 @@ def system_info():
         "device_ip": os.environ.get("HOST_LAN_IP") or None,
     }
 
+# ── appliance power controls (#39) — thriveOS only ─────────────────────────────
+# The API runs in a container and can't power-cycle its own host. On thriveOS a
+# host-side systemd watcher (thrive-power.path) consumes request files dropped
+# into the data dir — which is bind-mounted from the host (trunk/data ⇄ /data) —
+# and runs reboot/poweroff/etc. The dangerous capability lives ONLY in the OS
+# image: a host init unit writes a `.available` marker once the watcher is wired,
+# so on a bare Docker host (e.g. nerfBase, public via Cloudflare) there's no
+# watcher, no marker, and these endpoints report unavailable + refuse to act.
+POWER_ACTIONS = ("reboot", "poweroff", "restart-stack", "relaunch-kiosk")
+_CONTROL_DIR  = os.path.join(os.path.dirname(os.environ.get("DB_FILE", "/data/thrive.db")), "control")
+_POWER_MARKER = os.path.join(_CONTROL_DIR, ".available")
+
+def _power_available() -> bool:
+    return os.path.exists(_POWER_MARKER)
+
+@app.get("/system/power")
+def power_status(request: Request):
+    """Whether host power controls are wired (a thriveOS appliance) + the actions
+    on offer. Any signed-in user may read; only admins may act."""
+    user = current_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    avail = _power_available()
+    return {"available": avail,
+            "actions": list(POWER_ACTIONS) if avail else [],
+            "is_admin": user.get("role") == "admin"}
+
+@app.post("/system/power")
+def power_action(request: Request, body: dict):
+    """Admin: queue a host power action by dropping a request file the host
+    watcher executes. The verb travels in the FILENAME (allowlisted here); the
+    host never executes file contents. Refuses when the channel isn't present."""
+    user = current_user_from_request(request)
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    action = (body.get("action") or "").strip()
+    if action not in POWER_ACTIONS:
+        raise HTTPException(status_code=400, detail="Unknown action")
+    if not _power_available():
+        raise HTTPException(status_code=409, detail="Power control isn't available on this host")
+    try:
+        os.makedirs(_CONTROL_DIR, exist_ok=True)
+        with open(os.path.join(_CONTROL_DIR, f"request-{action}"), "w") as f:
+            f.write(f"{action} requested by {user.get('username') or '?'}\n")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Couldn't queue request: {e}")
+    return {"ok": True, "action": action}
+
 # ── bootstrap modules on startup ──────────────────────────────────────────────
 @app.on_event("startup")
 def startup():

@@ -1,0 +1,9 @@
+# thriveOS: execute a queued thrive power-control request (#39). Triggered by
+# thrive-power.path (not enabled directly). Runs as root so it can reboot/poweroff
+# and bounce the stack/kiosk; the executor consumes the request file each run.
+[Unit]
+Description=Execute a queued thrive power-control request (#39)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/thrive-power
