@@ -2,11 +2,11 @@
   "id": "vehicles",
   "name": "Vehicles",
   "icon": "🚗",
-  "description": "Garage, MPG tracking, oil changes and tires",
+  "description": "Garage — vehicles, oil changes and tires",
   "version": "0.1.0",
   "color": "#3b82f6",
   "nav_path": "/vehicles",
   "core": false,
-  "api_routers": ["api.routers.vehicles", "api.routers.mpg"],
+  "api_routers": ["api.routers.vehicles"],
   "requires": []
 }

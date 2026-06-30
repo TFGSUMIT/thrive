@@ -1,0 +1,12 @@
+{
+  "id": "mpg",
+  "name": "MPG",
+  "icon": "⛽",
+  "description": "Fuel fill-up log, MPG stats, station lookup",
+  "version": "0.1.0",
+  "color": "#22c55e",
+  "nav_path": "/mpg",
+  "core": false,
+  "api_routers": ["api.routers.mpg"],
+  "requires": []
+}

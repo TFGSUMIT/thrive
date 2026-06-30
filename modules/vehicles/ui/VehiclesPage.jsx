@@ -3,7 +3,6 @@
 // thrive UI
 // =============================================================================
 import { useState, useEffect, useCallback, useRef } from "react";
-import MPGPage, { MpgChart } from "./MPGPage";
 
 const API = "/api/vehicles";
 function today() { return new Date().toISOString().slice(0, 10); }
@@ -375,72 +374,6 @@ function TirePanel({ vehicleId, summary, showToast, showConfirm }) {
   );
 }
 
-// ── fill-ups panel (read-only; data comes from the MPG tracker) ─────────────
-function FillupsPanel({ vehicleId }) {
-  const [rows, setRows]   = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/mpg?vehicle_id=${vehicleId}`)
-      .then(r => r.json())
-      .then(d => { if (!cancelled) setRows(Array.isArray(d) ? d : []); })
-      .catch(() => { if (!cancelled) setRows([]); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [vehicleId]);
-
-  const valid = rows.filter(r => r.mpg != null);
-  const avgMpg = valid.length ? valid.reduce((a, b) => a + b.mpg, 0) / valid.length : null;
-  const recent = [...rows].reverse().slice(0, 8);  // newest first, cap at 8
-
-  return (
-    <div style={{ ...card, marginBottom: 12 }}>
-      <div style={sectionHead}>
-        <span>Fill-ups</span>
-        {avgMpg != null && <Badge status="ok" text={`avg ${avgMpg.toFixed(1)} mpg`} />}
-      </div>
-      {loading ? (
-        <div style={{ padding: "1rem", fontSize: 12, color: "var(--text-tertiary,#666)" }}>Loading…</div>
-      ) : rows.length === 0 ? (
-        <div style={{ padding: "1rem", fontSize: 12, color: "var(--text-tertiary,#666)", textAlign: "center", lineHeight: 1.7 }}>
-          No fill-ups linked to this vehicle yet.<br />
-          <span style={{ fontSize: 11 }}>Log one on the MPG page with this vehicle selected.</span>
-        </div>
-      ) : (
-        <div style={{ padding: "0 16px" }}>
-          {valid.length >= 2 && (
-            <div style={{ padding: "12px 0 4px" }}>
-              <MpgChart entries={rows} />
-            </div>
-          )}
-          <div style={{ display: "grid", gridTemplateColumns: "92px 64px 1fr 48px 52px 60px", gap: 6, padding: "8px 0", borderBottom: "1px solid var(--border-color,#2a2a2a)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-tertiary,#666)" }}>
-            <span>Date</span><span style={{ textAlign: "right" }}>Odo</span><span>Station</span><span style={{ textAlign: "right" }}>MPG</span><span style={{ textAlign: "right" }}>Gal</span><span style={{ textAlign: "right" }}>Total</span>
-          </div>
-          {recent.map(e => {
-            const mpgColor = e.mpg == null ? "var(--text-tertiary,#666)" : e.mpg >= (avgMpg || 0) ? "var(--color-success,#22c55e)" : "var(--color-danger,#ef4444)";
-            return (
-              <div key={e.id} style={{ display: "grid", gridTemplateColumns: "92px 64px 1fr 48px 52px 60px", gap: 6, padding: "8px 0", borderBottom: "1px solid var(--border-color,#2a2a2a)", fontSize: 12, alignItems: "center" }}>
-                <span style={{ color: "var(--text-secondary,#aaa)" }}>{e.date}</span>
-                <span style={{ textAlign: "right", fontFamily: "monospace", fontSize: 11, color: "var(--text-tertiary,#888)" }} title="Odometer">{e.odometer != null ? Math.round(e.odometer).toLocaleString() : "—"}</span>
-                <span style={{ fontSize: 11, color: "var(--text-tertiary,#888)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={e.station || ""}>{e.station || e.notes || ""}</span>
-                <span style={{ textAlign: "right", fontWeight: 500, fontSize: 13, color: mpgColor }}>{fmt(e.mpg, 1)}</span>
-                <span style={{ textAlign: "right", color: "var(--text-secondary,#aaa)" }}>{fmt(e.gallons, 2)}</span>
-                <span style={{ textAlign: "right", color: "var(--text-secondary,#aaa)" }}>{e.total == null ? "—" : "$" + Number(e.total).toFixed(2)}</span>
-              </div>
-            );
-          })}
-          {rows.length > recent.length && (
-            <div style={{ padding: "8px 0", fontSize: 10, color: "var(--text-tertiary,#666)", textAlign: "center" }}>
-              Showing {recent.length} most recent of {rows.length} · full history on the MPG page
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── vehicle card ───────────────────────────────────────────────────────────
 function VehicleCard({ vehicle, onDeleted, showToast, showConfirm }) {
   const [expanded, setExpanded] = useState(false);
@@ -596,7 +529,6 @@ function VehicleCard({ vehicle, onDeleted, showToast, showConfirm }) {
               summary above is shown for a car you no longer own (#38) */}
           {!isFormer && (
             <>
-              <FillupsPanel vehicleId={vehicle.id} />
               <OilPanel vehicleId={vehicle.id} summary={summary} showToast={showToast} showConfirm={showConfirm} />
               <TirePanel vehicleId={vehicle.id} summary={summary} showToast={showToast} showConfirm={showConfirm} />
             </>
@@ -618,7 +550,6 @@ export default function VehiclesPage({ showToast: _showToast, showConfirm: _show
   const [loading,  setLoading]  = useState(true);
   const [adding,   setAdding]   = useState(false);
   const [saving,   setSaving]   = useState(false);
-  const [tab,      setTab]      = useState("fleet");  // 'fleet' | 'mpg'
 
   const load = useCallback(async () => {
     try {
@@ -676,20 +607,6 @@ export default function VehiclesPage({ showToast: _showToast, showConfirm: _show
 
   return (
     <div style={{ padding: "1.5rem 1.5rem 3rem", maxWidth: 700, margin: "0 auto" }}>
-      {/* tab bar */}
-      <div style={{ display: "flex", gap: 0, marginBottom: "1.5rem", borderBottom: "1px solid var(--border-color,#2a2a2a)" }}>
-        {[["fleet","🚗 Garage"],["mpg","⛽ MPG"]].map(([id, lbl]) => (
-          <button key={id} onClick={() => setTab(id)} style={{ fontFamily: "monospace", fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", padding: "10px 20px", background: "none", border: "none", borderBottom: tab === id ? "2px solid var(--text-primary,#e8e6e0)" : "2px solid transparent", color: tab === id ? "var(--text-primary,#e8e6e0)" : "var(--text-tertiary,#666)", cursor: "pointer", marginBottom: "-1px" }}>
-            {lbl}
-          </button>
-        ))}
-      </div>
-
-      {/* MPG tab */}
-      {tab === "mpg" && <MPGPage showToast={showToast} showConfirm={showConfirm} />}
-
-      {/* Fleet tab */}
-      {tab === "fleet" && (<>
       <div style={{ marginBottom: "1.5rem", display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
         <div>
           <h1 style={{ fontSize: 14, fontWeight: 500, letterSpacing: "0.15em", textTransform: "uppercase", margin: 0 }}>Garage</h1>
@@ -740,7 +657,6 @@ export default function VehiclesPage({ showToast: _showToast, showConfirm: _show
           );
         })
       )}
-      </>)}
     </div>
   );
 }
