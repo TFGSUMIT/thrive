@@ -753,7 +753,8 @@ export default function MPGPage({ showToast, showConfirm }) {
               style={{ ...inputStyle, width: "auto", fontSize: 11, padding: "5px 10px" }}
             >
               <option value="">All vehicles</option>
-              {vehicles.map(v => <option key={v.id} value={v.id}>{vehName(v)}</option>)}
+              {/* don't offer former vehicles to log/filter fill-ups against (#38) */}
+              {vehicles.filter(v => v.status !== "former").map(v => <option key={v.id} value={v.id}>{vehName(v)}</option>)}
             </select>
           )}
         </div>

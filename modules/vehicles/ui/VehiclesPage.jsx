@@ -554,9 +554,15 @@ function VehicleCard({ vehicle, onDeleted, showToast, showConfirm }) {
             </div>
           )}
 
-          <FillupsPanel vehicleId={vehicle.id} />
-          <OilPanel vehicleId={vehicle.id} summary={summary} showToast={showToast} showConfirm={showConfirm} />
-          <TirePanel vehicleId={vehicle.id} summary={summary} showToast={showToast} showConfirm={showConfirm} />
+          {/* maintenance is hidden for former vehicles — only the disposition
+              summary above is shown for a car you no longer own (#38) */}
+          {!isFormer && (
+            <>
+              <FillupsPanel vehicleId={vehicle.id} />
+              <OilPanel vehicleId={vehicle.id} summary={summary} showToast={showToast} showConfirm={showConfirm} />
+              <TirePanel vehicleId={vehicle.id} summary={summary} showToast={showToast} showConfirm={showConfirm} />
+            </>
+          )}
         </div>
       )}
     </div>
