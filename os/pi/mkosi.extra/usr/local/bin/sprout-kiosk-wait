@@ -1,9 +1,0 @@
-#!/bin/sh
-# Hold the kiosk until thrive is actually serving. On FIRST boot the stack builds
-# for several minutes (npm/vite on the Pi), so we poll :9500 up to ~20 min before
-# launching anyway (better a blank app than blocking the service forever).
-for _ in $(seq 1 600); do
-    curl -fsS -o /dev/null --max-time 3 http://localhost:9500/ && exit 0
-    sleep 2
-done
-exit 0

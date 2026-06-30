@@ -1,8 +1,12 @@
 #!/bin/sh
-# Chromium fullscreen kiosk pointed at the local thrive UI. Runs inside cage
-# (Wayland), launched by sprout-kiosk.service. --app gives a chromeless window;
-# --kiosk locks it fullscreen.
-URL=http://localhost:9500
+# Chromium fullscreen kiosk. Runs inside cage (Wayland), launched by
+# sprout-kiosk.service. --app gives a chromeless window; --kiosk locks it
+# fullscreen.
+#
+# Starts on a local thrive-logo holding page (#73) that polls the stack and
+# redirects to the app once it's up — so the boot sequence keeps the logo on
+# screen instead of flashing black / "can't be reached" while thrive starts.
+URL=file:///usr/local/share/sprout-kiosk/loading.html
 exec chromium \
     --kiosk --no-sandbox --app="$URL" \
     --ozone-platform=wayland \
