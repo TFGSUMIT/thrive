@@ -33,13 +33,17 @@ export default function TransactionRow({
   const clearedKey = t.cleared === null || t.cleared === undefined ? 'null' : t.cleared
 
   const isTransfer = !!t.transfer_account_id
-  // splits/transfers aren't a single value; reconciled rows are locked for safety
-  const lockInline = t.has_splits || isTransfer || t.cleared === 'Reconciled'
+  // Only splits truly can't edit in a single row (multiple category/amount lines).
+  // Transfers + reconciled rows DO edit in place — the backend mirrors a transfer's
+  // amount/date/memo to its paired leg, and the transfer target (category) stays
+  // read-only inline (change it via the full form). Unverified rows keep the
+  // import/verify flow.
+  const fullFormOnly = t.has_splits || isUnverified
 
-  // tap the row → edit in place (or hand locked/unverified rows to the full form)
+  // tap the row → edit in place (or hand split/unverified rows to the full form)
   const enterEdit = () => {
     if (editing) return
-    if (isUnverified || lockInline) { onEdit(); return }
+    if (fullFormOnly) { onEdit(); return }
     setDraft({
       date:        t.date || '',
       payee_id:    t.payee_id != null ? String(t.payee_id) : '',
@@ -140,13 +144,14 @@ export default function TransactionRow({
             {t.payee_name || (isUnverified ? t.import_description : null) || <span className="txn-cell-empty">+ payee</span>}
           </span>}
 
-      {/* Category */}
-      {editing
+      {/* Category — a transfer's target is read-only inline (its badge); other
+          rows get the category picker */}
+      {editing && !isTransfer
         ? <span className="txn-edit-field" onClick={stop}>
             <FilterCombo options={categoryOptions} value={draft.category_id} placeholder="Category…" width={140}
               onChange={v => setDraft(d => ({ ...d, category_id: v }))} />
           </span>
-        : <span className="txn-category">{categoryDisplay}</span>}
+        : <span className="txn-category" title={editing && isTransfer ? 'Edit the transfer target in the full form' : undefined}>{categoryDisplay}</span>}
 
       {/* Memo */}
       {editing
