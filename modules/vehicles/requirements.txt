@@ -1,2 +1,2 @@
-# vehicles/mpg module backend deps (installed into the API image at build time)
-httpx>=0.27      # Overpass API nearby fuel-station lookups
+# vehicles module backend deps (installed into the API image at build time)
+# (none — the fuel-station lookup that needed httpx moved to the `mpg` module)
