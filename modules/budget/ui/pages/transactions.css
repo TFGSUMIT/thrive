@@ -299,7 +299,9 @@ input[type="date"].txn-edit-field::-webkit-calendar-picker-indicator {
 }
 .txn-split-cat { grid-column: 3 / 7; }   /* date → memo span */
 .txn-split-amt { grid-column: 7; }        /* lines up with AMOUNT */
-.txn-split-rm  { grid-column: 8; justify-self: center; }
+/* line up the line-remove ✗ under the row's cancel ✗ (cluster is ✓ ✗ 🗑, right-
+   packed — so offset by one button + gap to sit under the middle one) */
+.txn-split-rm  { grid-column: 8; justify-self: end; margin-right: 26px; }
 .txn-split-line .input { font-size: 12px; padding: 4px 6px; }
 .txn-split-add { grid-column: 3 / 6; justify-self: start; font-size: 11px; padding: 4px 8px; }
 .txn-split-remaining { grid-column: 7; text-align: right; font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }
