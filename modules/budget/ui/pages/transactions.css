@@ -279,9 +279,10 @@ input[type="date"].txn-edit-field::-webkit-calendar-picker-indicator {
 .txn-edit-act--cancel:hover { background: var(--bg-elevated); }
 .txn-edit-act--delete:hover { background: rgba(239,68,68,0.14);  border-color: var(--color-danger, #ef4444); }
 
-/* Inline split editor — editable category+amount lines under the row (#1) */
+/* Inline split editor — editable category+amount lines under the row (#1).
+   Lines reuse the ROW's grid so each amount sits right under the AMOUNT column. */
 .txn-split-edit {
-    padding: 8px 12px 10px 60px;
+    padding: 6px 12px 8px;
     background: var(--bg-elevated);
     border-bottom: 1px solid var(--border);
     box-shadow: inset 2px 0 0 var(--accent);
@@ -289,22 +290,19 @@ input[type="date"].txn-edit-field::-webkit-calendar-picker-indicator {
     flex-direction: column;
     gap: 6px;
 }
-.txn-split-line {
-    display: grid;
-    grid-template-columns: 1fr 120px 24px;
-    gap: 8px;
-    align-items: center;
-}
-.txn-split-line .input { font-size: 12px; padding: 4px 6px; }
+.txn-split-line,
 .txn-split-foot {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 20px 28px 120px 1fr 1fr 1fr 100px 100px;
     gap: 12px;
-    margin-top: 2px;
+    align-items: center;
 }
-.txn-split-add { font-size: 11px; padding: 4px 8px; }
-.txn-split-remaining { font-family: var(--font-mono); font-size: 11px; }
+.txn-split-cat { grid-column: 3 / 7; }   /* date → memo span */
+.txn-split-amt { grid-column: 7; }        /* lines up with AMOUNT */
+.txn-split-rm  { grid-column: 8; justify-self: center; }
+.txn-split-line .input { font-size: 12px; padding: 4px 6px; }
+.txn-split-add { grid-column: 3 / 6; justify-self: start; font-size: 11px; padding: 4px 8px; }
+.txn-split-remaining { grid-column: 7; text-align: right; font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }
 
 /* ── Clickable account link ────────────────────────────────────────────────── */
 .txn-account-link {
