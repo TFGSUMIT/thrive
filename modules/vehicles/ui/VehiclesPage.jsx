@@ -3,6 +3,7 @@
 // thrive UI
 // =============================================================================
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 
 const API = "/api/vehicles";
 function today() { return new Date().toISOString().slice(0, 10); }
@@ -546,10 +547,19 @@ function VehicleCard({ vehicle, onDeleted, showToast, showConfirm }) {
 export default function VehiclesPage({ showToast: _showToast, showConfirm: _showConfirm }) {
   const showToast   = _showToast   || (() => {});
   const showConfirm = _showConfirm || ((msg, onYes) => { if (window.confirm(msg)) onYes(); });
+  const navigate    = useNavigate();
   const [vehicles, setVehicles] = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [adding,   setAdding]   = useState(false);
   const [saving,   setSaving]   = useState(false);
+  const [mpgAvail, setMpgAvail] = useState(false);   // #66: feature-detect the mpg module
+
+  // link to the MPG module only when it's installed + enabled (optional companion)
+  useEffect(() => {
+    fetch("/api/modules").then(r => r.json())
+      .then(ms => setMpgAvail(Array.isArray(ms) && ms.some(m => m.id === "mpg" && m.installed && m.enabled)))
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -612,9 +622,14 @@ export default function VehiclesPage({ showToast: _showToast, showConfirm: _show
           <h1 style={{ fontSize: 14, fontWeight: 500, letterSpacing: "0.15em", textTransform: "uppercase", margin: 0 }}>Garage</h1>
           <p style={{ fontSize: 12, color: "var(--text-tertiary,#888)", marginTop: 4 }}>Oil changes, tires, maintenance — active & former</p>
         </div>
-        {!adding && (
-          <button style={btnPrimary} onClick={() => setAdding(true)}>+ Add vehicle</button>
-        )}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {mpgAvail && (
+            <button style={btnSecondary} onClick={() => navigate("/mpg")} title="Fuel / MPG tracker">⛽ MPG →</button>
+          )}
+          {!adding && (
+            <button style={btnPrimary} onClick={() => setAdding(true)}>+ Add vehicle</button>
+          )}
+        </div>
       </div>
 
       {adding && (
