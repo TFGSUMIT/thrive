@@ -11,16 +11,21 @@
 // fall back to the full form. Status (the dot) cycles on tap; account is fixed.
 // Works on touch — no hover anywhere.
 // =============================================================================
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { fmtMoney, fmtDate, CLEARED_LABEL, CLEARED_TITLE } from '../utils/constants'
 
 export default function TransactionRow({
   t, showBalance, showAccount, selected, onSelect,
   onEdit, onDelete, onCycleStatus, onAccountClick, matchClass = '',
   categoryOptions = [], payeeOptions = [], accountOptions = [], onPatch, onSaveSplit,
+  active = false, onActivate, onDeactivate,
 }) {
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft]     = useState(null)
+  const [draft, setDraft] = useState(null)
+  const editing = active && !!draft   // parent gates the single active editor (#55)
+
+  // only one row edits at a time: when another row takes over, our `active` goes
+  // false — drop the draft, discarding any unsaved edits in this row.
+  useEffect(() => { if (!active) setDraft(null) }, [active])
 
   const isIncome     = (t.amount || 0) > 0
   const isUnverified = t.cleared === 'Unverified'
@@ -53,10 +58,10 @@ export default function TransactionRow({
         memo:        s.memo || '',
       })),
     })
-    setEditing(true)
+    onActivate?.(t.id)
   }
 
-  const cancel = () => { setEditing(false); setDraft(null) }
+  const cancel = () => { onDeactivate?.() }
 
   // "split mode" = the draft is holding split lines (and not a single cat/transfer)
   const splitMode = editing && draft && draft.splits.length > 0
@@ -82,7 +87,7 @@ export default function TransactionRow({
         .map(l => ({ category_id: l.category_id === '' ? null : Number(l.category_id),
                      amount: parseFloat(l.amount) || 0, memo: l.memo || null }))
       onSaveSplit?.(t.id, fields, lines)
-      setEditing(false); setDraft(null)
+      onDeactivate?.()
       return
     }
     const fields = {}
@@ -106,7 +111,7 @@ export default function TransactionRow({
       if (changed && cid != null) fields.category_id = cid
     }
     if (Object.keys(fields).length) onPatch?.(t.id, fields)
-    setEditing(false); setDraft(null)
+    onDeactivate?.()
   }
 
   // Enter commits, Esc cancels (text inputs only; the pickers handle their own keys)
