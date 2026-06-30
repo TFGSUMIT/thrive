@@ -598,21 +598,50 @@ export default function VehiclesPage({ showToast: _showToast, showConfirm: _show
 
   // drag-to-reorder (#37): the order is your ownership order. Reorder within a
   // group (active / former); persist the new order to the server.
-  const dragIndex = useRef(null);
-  const onDrop = (toIdx) => (e) => {
-    e.preventDefault();
-    const from = dragIndex.current;
-    dragIndex.current = null;
-    if (from == null || from === toIdx) return;
-    if (vehicles[from]?.status !== vehicles[toIdx]?.status) return;   // within a group only
+  // Uses Pointer Events (not HTML5 drag) so it works by finger on the kiosk
+  // touchscreen as well as by mouse (#63). `dragLive` is the synchronous source
+  // of truth for the move/end handlers; `drag` state drives the render feedback.
+  const dragLive = useRef(null);
+  const [drag, setDrag] = useState(null);   // { from, over } while dragging
+
+  const commitReorder = (from, to) => {
+    if (from == null || to == null || from === to) return;
+    if (vehicles[from]?.status !== vehicles[to]?.status) return;   // within a group only
     const next = [...vehicles];
     const [moved] = next.splice(from, 1);
-    next.splice(toIdx, 0, moved);
+    next.splice(to, 0, moved);
     setVehicles(next);
     fetch(`${API}/order`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids: next.map(x => x.id) }),
     }).catch(() => showToast?.("Couldn't save order", "error"));
+  };
+
+  // walk up from the point under the finger/cursor to the row carrying data-vrow
+  const rowIndexAt = (x, y) => {
+    let el = document.elementFromPoint(x, y);
+    while (el && (!el.dataset || el.dataset.vrow == null)) el = el.parentElement;
+    return el?.dataset?.vrow != null ? Number(el.dataset.vrow) : null;
+  };
+  const onHandleDown = (i) => (e) => {
+    e.preventDefault();                                    // no text-select / scroll
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* unsupported */ }
+    dragLive.current = { from: i, over: i };
+    setDrag(dragLive.current);
+  };
+  const onHandleMove = (e) => {
+    if (!dragLive.current) return;
+    const over = rowIndexAt(e.clientX, e.clientY);
+    if (over == null || over === dragLive.current.over) return;
+    dragLive.current = { ...dragLive.current, over };
+    setDrag(dragLive.current);
+  };
+  const onHandleEnd = (e) => {
+    const d = dragLive.current;
+    dragLive.current = null;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* noop */ }
+    setDrag(null);
+    if (d) commitReorder(d.from, d.over);
   };
 
   return (
@@ -650,20 +679,31 @@ export default function VehiclesPage({ showToast: _showToast, showConfirm: _show
           // insert a divider header when transitioning from active to former
           const prev = vehicles[i - 1];
           const showFormerHeader = v.status === "former" && (!prev || prev.status !== "former");
+          const isSource = drag?.from === i;
+          const isTarget = drag && drag.over === i && drag.from !== i;
           return (
-            <div key={v.id} onDragOver={(e) => e.preventDefault()} onDrop={onDrop(i)}>
+            <div key={v.id}>
               {showFormerHeader && (
                 <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "20px 2px 12px" }}>
                   <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--text-tertiary,#666)" }}>Former vehicles</span>
                   <div style={{ flex: 1, height: 1, background: "var(--border-color,#2a2a2a)" }} />
                 </div>
               )}
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 4 }}>
-                <div draggable
-                  onDragStart={() => { dragIndex.current = i; }}
-                  onDragEnd={() => { dragIndex.current = null; }}
+              <div data-vrow={i}
+                style={{
+                  display: "flex", alignItems: "flex-start", gap: 4,
+                  opacity: isSource ? 0.4 : 1,
+                  // insertion bar on the row the finger/cursor is over
+                  boxShadow: isTarget ? "inset 0 2px 0 0 var(--text-secondary,#aaa)" : "none",
+                  borderRadius: isTarget ? 4 : 0,
+                }}>
+                <div
+                  onPointerDown={onHandleDown(i)}
+                  onPointerMove={onHandleMove}
+                  onPointerUp={onHandleEnd}
+                  onPointerCancel={onHandleEnd}
                   title="Drag to reorder (your ownership order)"
-                  style={{ cursor: "grab", color: "var(--text-tertiary,#555)", fontSize: 16, lineHeight: 1, padding: "14px 2px 0", userSelect: "none", flexShrink: 0 }}>⠿</div>
+                  style={{ cursor: "grab", touchAction: "none", color: "var(--text-tertiary,#555)", fontSize: 18, lineHeight: 1, padding: "14px 8px 0 2px", userSelect: "none", flexShrink: 0, alignSelf: "stretch" }}>⠿</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <VehicleCard vehicle={v} onDeleted={load} showToast={showToast} showConfirm={showConfirm} />
                 </div>
