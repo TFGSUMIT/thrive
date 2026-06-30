@@ -199,6 +199,17 @@ export default function TransactionsPage({ initial = {}, onBalanceChange }) {
         } catch (e) { showToast(e.message, 'error') }
     }
 
+    // Inline split save (#1): PATCH the common fields + total, then replace the
+    // split lines (set_splits validates they sum to the transaction amount).
+    async function handleSaveSplit(id, fields, splits) {
+        try {
+            await api.patch(`/transactions/${id}`, fields)
+            await api.put(`/transactions/${id}/splits`, splits)
+            showToast('Saved', 'success')
+            reload(); loadLookups()
+        } catch (e) { showToast(e.message, 'error'); reload() }
+    }
+
     // Inline single-field edit from a row cell. Category/payee/memo update in place
     // (no scroll jump); amount/date affect ordering + running balance, so reload.
     async function handlePatch(id, fields) {
@@ -521,6 +532,7 @@ export default function TransactionsPage({ initial = {}, onBalanceChange }) {
                                     showBalance={showBalanceCol} showAccount={!accountId}
                                     categoryOptions={categoryOptions} payeeOptions={payeeOptions} accountOptions={accountOptions}
                                     onPatch={handlePatch}
+                    onSaveSplit={handleSaveSplit}
                                     selected={selected.has(t.id)}
                                     onSelect={() => toggleSelect(t.id)}
                                     onEdit={() => {
