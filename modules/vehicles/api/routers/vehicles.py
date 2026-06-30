@@ -100,6 +100,8 @@ def init_db():
             ("disposed_mileage", "REAL"),
             ("disposed_to",      "TEXT"),
             ("disposed_note",    "TEXT"),
+            ("color",            "TEXT"),       # #36: per-vehicle accent colour
+            ("sort_order",       "INTEGER"),    # #37: manual drag order (NULL → by id)
         ):
             if col not in existing:
                 conn.execute(f"ALTER TABLE vehicles ADD COLUMN {col} {decl}")
@@ -120,6 +122,7 @@ class VehicleCreate(BaseModel):
     vin:              Optional[str]   = None
     plate:            Optional[str]   = None
     notes:            Optional[str]   = None
+    color:            Optional[str]   = None     # #36: accent colour (hex)
     status:           Optional[str]   = "active"   # 'active' | 'former'
     disposed_date:    Optional[str]   = None
     disposed_price:   Optional[float] = None
@@ -129,6 +132,9 @@ class VehicleCreate(BaseModel):
 
 class VehicleUpdate(VehicleCreate):
     pass
+
+class VehicleOrder(BaseModel):
+    ids: list[int]
 
 class OilChangeCreate(BaseModel):
     date:           str
@@ -191,9 +197,22 @@ def list_vehicles():
     conn = get_db()
     try:
         rows = conn.execute(
-            "SELECT * FROM vehicles ORDER BY (status='former'), id ASC"
+            "SELECT * FROM vehicles ORDER BY (status='former'), COALESCE(sort_order, id) ASC, id ASC"
         ).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+@router.put("/order")
+def reorder_vehicles(body: VehicleOrder):
+    """Persist a manual vehicle order (#37) — drag-to-reorder sends the full list
+    of ids in the desired order; sort_order is assigned by index."""
+    conn = get_db()
+    try:
+        for idx, vid in enumerate(body.ids):
+            conn.execute("UPDATE vehicles SET sort_order=? WHERE id=?", (idx, vid))
+        conn.commit()
+        return {"ok": True, "count": len(body.ids)}
     finally:
         conn.close()
 
@@ -203,10 +222,10 @@ def create_vehicle(v: VehicleCreate):
     try:
         cur = conn.execute(
             """INSERT INTO vehicles
-               (nickname,year,make,model,trim,vin,plate,notes,
+               (nickname,year,make,model,trim,vin,plate,notes,color,
                 status,disposed_date,disposed_price,disposed_mileage,disposed_to,disposed_note)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (v.nickname, v.year, v.make, v.model, v.trim, v.vin, v.plate, v.notes,
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (v.nickname, v.year, v.make, v.model, v.trim, v.vin, v.plate, v.notes, v.color,
              v.status or "active", v.disposed_date, v.disposed_price, v.disposed_mileage,
              v.disposed_to, v.disposed_note)
         )
@@ -224,10 +243,10 @@ def update_vehicle(vehicle_id: int, v: VehicleUpdate):
             raise HTTPException(status_code=404, detail="Vehicle not found")
         conn.execute(
             """UPDATE vehicles SET
-               nickname=?,year=?,make=?,model=?,trim=?,vin=?,plate=?,notes=?,
+               nickname=?,year=?,make=?,model=?,trim=?,vin=?,plate=?,notes=?,color=?,
                status=?,disposed_date=?,disposed_price=?,disposed_mileage=?,disposed_to=?,disposed_note=?
                WHERE id=?""",
-            (v.nickname, v.year, v.make, v.model, v.trim, v.vin, v.plate, v.notes,
+            (v.nickname, v.year, v.make, v.model, v.trim, v.vin, v.plate, v.notes, v.color,
              v.status or "active", v.disposed_date, v.disposed_price, v.disposed_mileage,
              v.disposed_to, v.disposed_note, vehicle_id)
         )
