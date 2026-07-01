@@ -46,6 +46,9 @@ write_status() {
         [ -n "$ssid" ] && connected=true
         signal="$(printf '%s\n' "$link" | sed -n 's/^[[:space:]]*signal:[[:space:]]*//p' | grep -oE '\-?[0-9]+' | head -1)"
         ip="$(ip -4 -o addr show "$IFACE" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)"
+        # Fallback when iproute2 isn't reporting (or absent): networkd is the source
+        # of truth for the DHCP lease on a networkd-managed link.
+        [ -z "$ip" ] && ip="$(networkctl status "$IFACE" 2>/dev/null | sed -n 's/.*Address:[[:space:]]*\([0-9.]\{7,\}\).*/\1/p' | head -1)"
     fi
     printf '{"available":%s,"interface":%s,"connected":%s,"ssid":%s,"ip":%s,"signal_dbm":%s,"updated":%s}\n' \
         "$avail" "$(jstr "$IFACE")" "$connected" "$(jstr "$ssid")" "$(jstr "$ip")" \
