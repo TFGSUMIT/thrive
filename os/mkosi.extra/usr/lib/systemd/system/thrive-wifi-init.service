@@ -1,0 +1,22 @@
+# thriveOS: prepare the thrive Wi-Fi control channel. Runs after the app is up
+# (thrive.service's ./data:/data mount creates the host data dir), makes the
+# shared control dir, drops the `.wifi-available` marker the API feature-detects
+# on, and writes an initial wifi-status.json. The marker is what makes the Wi-Fi
+# panel appear in Settings — present only on a thriveOS appliance, never on a
+# bare Docker host. Shares the control dir with thrive-power-init (either may
+# create it; 0777 so the container can drop request files).
+[Unit]
+Description=Prepare the thrive Wi-Fi control channel
+After=thrive.service
+Wants=thrive.service
+ConditionPathExists=/opt/thrive/trunk
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'mkdir -p /opt/thrive/trunk/data/control && chmod 0777 /opt/thrive/trunk/data/control && : > /opt/thrive/trunk/data/control/.wifi-available'
+ExecStart=/usr/local/bin/thrive-wifi
+Environment=STATUS_ONLY=1
+
+[Install]
+WantedBy=multi-user.target

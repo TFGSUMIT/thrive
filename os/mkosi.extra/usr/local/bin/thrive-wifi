@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+# Host-side executor + status reporter for thrive Settings → Wi-Fi. thriveOS only.
+#
+# Same trust model as thrive-power (#39): the thrive API runs in a container and
+# can't drive the host radio, so it drops request files into the (host-mounted)
+# control dir and this host-side unit acts on them. thriveOS uses
+# systemd-networkd + wpa_supplicant@<iface> (no NetworkManager), so "connect" =
+# write /etc/wpa_supplicant/wpa_supplicant-<iface>.conf and (re)start the
+# template unit; networkd's 25-wlan.network then DHCPs the link.
+#
+# The verb travels in the trusted FILENAME (allowlisted by the API before it
+# writes). Only `connect`/`forget` read the file *contents*, and only as DATA
+# (SSID + PSK parsed as JSON, handed to wpa_passphrase) — never executed.
+#
+# Runs on:
+#   - thrive-wifi.path       → any request-wifi-* appears  (act, then refresh)
+#   - thrive-wifi-status.timer → periodic status refresh    (STATUS_ONLY=1)
+set -uo pipefail
+
+CTRL=/opt/thrive/trunk/data/control
+STATUS="$CTRL/wifi-status.json"
+SCAN="$CTRL/wifi-scan.json"
+WPA_DIR=/etc/wpa_supplicant
+shopt -s nullglob
+mkdir -p "$CTRL"
+
+# First wireless interface present (onboard wlan0 today; a USB dongle's wlan1
+# once firmware-realtek is baked). MVP manages a single interface.
+wifi_iface() {
+    local d
+    for d in /sys/class/net/*/wireless; do basename "$(dirname "$d")"; return 0; done
+    return 1
+}
+IFACE="$(wifi_iface || true)"
+
+jstr() { python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"; }
+
+# ── status: current SSID / IP / signal, written atomically ────────────────────
+write_status() {
+    local avail=false connected=false ssid="" ip="" signal="" link=""
+    if [ -n "$IFACE" ]; then
+        avail=true
+        ip link set "$IFACE" up 2>/dev/null || true
+        link="$(iw dev "$IFACE" link 2>/dev/null || true)"
+        ssid="$(printf '%s\n' "$link" | sed -n 's/^[[:space:]]*SSID:[[:space:]]*//p' | head -1)"
+        [ -n "$ssid" ] && connected=true
+        signal="$(printf '%s\n' "$link" | sed -n 's/^[[:space:]]*signal:[[:space:]]*//p' | grep -oE '\-?[0-9]+' | head -1)"
+        ip="$(ip -4 -o addr show "$IFACE" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)"
+    fi
+    printf '{"available":%s,"interface":%s,"connected":%s,"ssid":%s,"ip":%s,"signal_dbm":%s,"updated":%s}\n' \
+        "$avail" "$(jstr "$IFACE")" "$connected" "$(jstr "$ssid")" "$(jstr "$ip")" \
+        "${signal:-null}" "$(jstr "$(date -Is)")" > "$STATUS.tmp"
+    mv -f "$STATUS.tmp" "$STATUS"
+}
+
+# ── scan: nearby networks → wifi-scan.json (deduped, best signal per SSID) ─────
+do_scan() {
+    [ -z "$IFACE" ] && { printf '{"networks":[],"updated":%s,"error":"no wifi interface"}\n' "$(jstr "$(date -Is)")" > "$SCAN"; return; }
+    ip link set "$IFACE" up 2>/dev/null || true
+    local raw_file; raw_file="$(mktemp)"
+    iw dev "$IFACE" scan 2>/dev/null > "$raw_file" || true
+    # NOTE: `python3 -` reads the SCRIPT from stdin (the heredoc), so the scan
+    # DATA must arrive by a different channel — a temp-file arg, not stdin.
+    STAMP="$(date -Is)" python3 - "$SCAN" "$raw_file" <<'PY'
+import json, os, sys, re
+raw = open(sys.argv[2], encoding="utf-8", errors="replace").read()
+nets = {}          # ssid -> best-signal entry
+cur = None
+
+def flush(bss):
+    if not bss or not bss["ssid"]:
+        return
+    s = bss["ssid"]
+    prev = nets.get(s)
+    if prev is None or (bss["signal"] or -999) > (prev["signal"] or -999):
+        nets[s] = bss
+
+for line in raw.splitlines():
+    if line.startswith("BSS "):
+        flush(cur)                                  # close the previous block
+        cur = {"ssid": "", "signal": None, "secured": False}
+        continue
+    if cur is None:
+        continue
+    m = re.search(r"signal:\s*(-?\d+(?:\.\d+)?)\s*dBm", line)
+    if m: cur["signal"] = float(m.group(1))
+    m = re.match(r"\s*SSID:\s*(.*)$", line)
+    if m: cur["ssid"] = m.group(1)
+    if "RSN:" in line or "WPA:" in line or "capability:" in line and "Privacy" in line:
+        cur["secured"] = True
+flush(cur)                                          # close the final block
+
+out = sorted(nets.values(), key=lambda n: (n["signal"] is None, -(n["signal"] or -999)))
+json.dump({"networks": out, "updated": os.environ["STAMP"]}, open(sys.argv[1], "w"))
+PY
+    rm -f "$raw_file"
+}
+
+# ── connect: {ssid, psk} → wpa_supplicant conf + (re)start template unit ───────
+do_connect() {
+    [ -z "$IFACE" ] && return
+    local payload="$1" ssid psk conf
+    ssid="$(printf '%s' "$payload" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("ssid",""))' 2>/dev/null || true)"
+    psk="$(printf '%s'  "$payload" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("psk",""))'  2>/dev/null || true)"
+    [ -z "$ssid" ] && { logger -t thrive-wifi "connect: empty SSID, ignoring"; return; }
+    mkdir -p "$WPA_DIR"
+    conf="$WPA_DIR/wpa_supplicant-$IFACE.conf"
+    {
+        echo "ctrl_interface=DIR=/run/wpa_supplicant GROUP=netdev"
+        echo "update_config=1"
+        echo "country=US"
+    } > "$conf"
+    if [ -n "$psk" ]; then
+        # wpa_passphrase emits a network={} block (keeps the plaintext line commented)
+        wpa_passphrase "$ssid" "$psk" >> "$conf" 2>/dev/null \
+            || { logger -t thrive-wifi "connect: wpa_passphrase failed (bad psk length?)"; return; }
+    else
+        printf 'network={\n\tssid="%s"\n\tkey_mgmt=NONE\n}\n' "$ssid" >> "$conf"
+    fi
+    chmod 600 "$conf"
+    logger -t thrive-wifi "connecting $IFACE → SSID $ssid"
+    systemctl enable "wpa_supplicant@$IFACE.service" >/dev/null 2>&1 || true
+    systemctl restart "wpa_supplicant@$IFACE.service" 2>/dev/null || true
+    networkctl reconfigure "$IFACE" 2>/dev/null || true
+}
+
+# ── forget: drop the saved config and take the link down ──────────────────────
+do_forget() {
+    [ -z "$IFACE" ] && return
+    rm -f "$WPA_DIR/wpa_supplicant-$IFACE.conf"
+    systemctl disable --now "wpa_supplicant@$IFACE.service" >/dev/null 2>&1 || true
+    logger -t thrive-wifi "forgot saved network on $IFACE"
+}
+
+# Status-only invocation (the timer) — just refresh and exit.
+if [ "${STATUS_ONLY:-0}" = "1" ]; then
+    write_status
+    exit 0
+fi
+
+# Request-driven invocation (the .path) — drain queued requests, then refresh.
+for req in "$CTRL"/request-wifi-*; do
+    verb=${req##*/request-wifi-}
+    payload="$(cat "$req" 2>/dev/null || true)"
+    rm -f "$req"                       # consume first so a failed action can't loop
+    case "$verb" in
+        scan)    do_scan ;;
+        connect) do_connect "$payload" ;;
+        forget)  do_forget "$payload" ;;
+        *)       logger -t thrive-wifi "ignoring unknown verb: $verb" ;;
+    esac
+done
+write_status

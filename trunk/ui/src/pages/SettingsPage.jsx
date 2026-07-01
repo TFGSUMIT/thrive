@@ -546,6 +546,146 @@ function PermissionsSection() {
 }
 
 
+// ── Wi-Fi setup (#83) — thriveOS appliance only, admin-only ───────────────────
+// Self-hides everywhere the host Wi-Fi helper isn't wired (bare/NAS/amd64): the
+// API reports available:false and this renders nothing. Scan/connect/forget go
+// through the same host request-file channel as Power; status is polled.
+function signalBars(dbm) {
+  if (dbm == null) return 0
+  if (dbm >= -55) return 4
+  if (dbm >= -65) return 3
+  if (dbm >= -75) return 2
+  return 1
+}
+function Bars({ dbm }) {
+  const n = signalBars(dbm)
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 1, height: 12 }} title={dbm != null ? `${dbm} dBm` : 'unknown'}>
+      {[4, 8, 11].map((h, i) => (
+        <span key={i} style={{ width: 3, height: h, borderRadius: 1,
+          background: i < n ? 'var(--color-success,#22c55e)' : 'var(--bg-tertiary,#333)' }} />
+      ))}
+    </span>
+  )
+}
+
+function WifiSection() {
+  const [info,     setInfo]     = useState(null)   // { available, is_admin, status }
+  const [scan,     setScan]     = useState(null)   // { networks, updated }
+  const [scanning, setScanning] = useState(false)
+  const [sel,      setSel]      = useState(null)   // ssid being joined
+  const [pw,       setPw]       = useState('')
+  const [busy,     setBusy]     = useState(false)
+  const [msg,      setMsg]      = useState(null)
+
+  const loadStatus = () => api.get('/system/wifi').then(setInfo).catch(() => setInfo({ available: false }))
+  useEffect(() => {
+    loadStatus()
+    const t = setInterval(loadStatus, 8000)   // live-ish link state from the host timer
+    return () => clearInterval(t)
+  }, [])
+
+  if (!info || !info.available || !info.is_admin) return null
+  const st = info.status || {}
+
+  // Kick a scan, then poll results until the `updated` stamp advances (or timeout).
+  const runScan = async () => {
+    setMsg(null); setScanning(true); setSel(null)
+    const before = scan?.updated || null
+    try {
+      await api.post('/system/wifi/scan', {})
+      for (let i = 0; i < 8; i++) {
+        await new Promise(r => setTimeout(r, 1500))
+        const res = await api.get('/system/wifi/scan').catch(() => null)
+        if (res && res.updated && res.updated !== before) { setScan(res); break }
+        if (i === 7) setScan(res || { networks: [] })
+      }
+    } catch (e) { setMsg(e.message) } finally { setScanning(false) }
+  }
+
+  const connect = async (ssid, secured) => {
+    if (secured && !pw) { setMsg('Enter the network password'); return }
+    setBusy(true); setMsg(null)
+    try {
+      await api.post('/system/wifi/connect', { ssid, psk: secured ? pw : '' })
+      setMsg(`Connecting to ${ssid}…`); setSel(null); setPw('')
+      // give the host a moment to associate + DHCP, then refresh status a few times
+      for (let i = 0; i < 6; i++) { await new Promise(r => setTimeout(r, 2500)); await loadStatus() }
+    } catch (e) { setMsg(e.message) } finally { setBusy(false) }
+  }
+
+  const forget = async () => {
+    setBusy(true); setMsg(null)
+    try { await api.post('/system/wifi/forget', {}); setMsg('Disconnected.'); await loadStatus() }
+    catch (e) { setMsg(e.message) } finally { setBusy(false) }
+  }
+
+  const nets = scan?.networks || []
+
+  return (
+    <CollapsibleCard title="Wi-Fi" defaultOpen={false}>
+      <div style={{ ...body, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* current link state */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ fontSize: 13 }}>
+            {st.connected
+              ? <span>📶 <b>{st.ssid}</b>
+                  <span style={{ fontSize: 11, color: 'var(--text-tertiary,#888)', marginLeft: 8, fontFamily: 'monospace' }}>
+                    {st.ip || 'no IP yet'}{st.signal_dbm != null ? ` · ${st.signal_dbm} dBm` : ''}
+                  </span></span>
+              : <span style={{ color: 'var(--text-secondary,#aaa)' }}>Not connected
+                  <span style={{ fontSize: 11, color: 'var(--text-tertiary,#666)', marginLeft: 8, fontFamily: 'monospace' }}>{st.interface || 'wlan'}</span></span>}
+          </div>
+          {st.connected && <button style={{ ...btnS, padding: '4px 10px', fontSize: 10 }} disabled={busy} onClick={forget}>Forget</button>}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button style={{ ...btnS, opacity: scanning ? 0.6 : 1 }} disabled={scanning || busy} onClick={runScan}>
+            {scanning ? 'Scanning…' : '⟳ Scan networks'}
+          </button>
+          {scan?.updated && !scanning && <span style={{ fontSize: 10, color: 'var(--text-tertiary,#666)' }}>{nets.length} found</span>}
+        </div>
+
+        {/* results */}
+        {nets.length > 0 && (
+          <div style={{ border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 8, overflow: 'hidden' }}>
+            {nets.map((n, i) => {
+              const active = sel === n.ssid
+              const here = st.connected && st.ssid === n.ssid
+              return (
+                <div key={n.ssid + i} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--border-color,#2a2a2a)' }}>
+                  <div onClick={() => { setSel(active ? null : n.ssid); setPw(''); setMsg(null) }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', cursor: 'pointer' }}>
+                    <Bars dbm={n.signal} />
+                    <span style={{ flex: 1, fontSize: 13 }}>{n.ssid}{here && <span style={{ fontSize: 10, color: 'var(--color-success,#22c55e)', marginLeft: 8 }}>connected</span>}</span>
+                    {n.secured && <span title="secured" style={{ fontSize: 11, color: 'var(--text-tertiary,#888)' }}>🔒</span>}
+                  </div>
+                  {active && !here && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '0 12px 12px' }}>
+                      {n.secured && (
+                        <PasswordInput wrapStyle={{ flex: '1 1 180px' }} style={inp} placeholder={`Password for ${n.ssid}`}
+                          value={pw} autoComplete="off" onChange={e => setPw(e.target.value)} />
+                      )}
+                      <button style={{ ...btnP, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={() => connect(n.ssid, n.secured)}>
+                        {busy ? 'Connecting…' : 'Connect'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {msg && <div style={{ fontSize: 12, color: 'var(--text-secondary,#aaa)' }}>{msg}</div>}
+        <div style={{ fontSize: 10, color: 'var(--text-tertiary,#555)', lineHeight: 1.6 }}>
+          Joins this appliance to a wireless network. Wired ethernet, when present, stays the preferred connection.
+        </div>
+      </div>
+    </CollapsibleCard>
+  )
+}
+
 // ── Power controls (#39) — thriveOS appliance only, admin-only ────────────────
 // Hidden everywhere the host watcher isn't wired (e.g. bare/NAS prod): the API
 // reports available:false and this renders nothing. The buttons drop a request
@@ -666,6 +806,10 @@ export default function SettingsPage() {
           settings and opens by default so it's easy to find. Self-hides off
           thriveOS (the API reports available:false). */}
       {user?.role === 'admin' && <PowerSection />}
+
+      {/* Wi-Fi — join the appliance to a wireless network; self-hides off a
+          thriveOS appliance (API reports available:false), same as Power. */}
+      {user?.role === 'admin' && <WifiSection />}
 
       <CollapsibleCard title="Modules">
         <ModulesSection />

@@ -3,7 +3,7 @@
 # Platform shell: auth gate + module loader.
 # Modules register their own routers via modules.py bootstrap.
 # =============================================================================
-import os, socket
+import os, socket, json
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -196,6 +196,112 @@ def power_action(request: Request, body: dict):
     except OSError as e:
         raise HTTPException(status_code=500, detail=f"Couldn't queue request: {e}")
     return {"ok": True, "action": action}
+
+# ── appliance Wi-Fi setup (#83) — thriveOS only ────────────────────────────────
+# Same containerized-can't-touch-the-host model as Power above. A host-side helper
+# (thrive-wifi) watches the bind-mounted control dir: the API drops request-wifi-*
+# files, the host acts (iw scan / wpa_supplicant) and writes results back as JSON
+# (wifi-status.json refreshed on a timer, wifi-scan.json on demand). The whole
+# capability is gated on a `.wifi-available` marker the OS image drops — so a bare
+# Docker host has no marker, no helper, and these endpoints report unavailable.
+_WIFI_MARKER = os.path.join(_CONTROL_DIR, ".wifi-available")
+_WIFI_STATUS = os.path.join(_CONTROL_DIR, "wifi-status.json")
+_WIFI_SCAN   = os.path.join(_CONTROL_DIR, "wifi-scan.json")
+
+def _read_json(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+def _wifi_channel() -> bool:
+    """The host-side Wi-Fi helper is wired up (a thriveOS appliance)."""
+    return os.path.exists(_WIFI_MARKER)
+
+def _wifi_write_request(verb: str, payload: str = "") -> None:
+    os.makedirs(_CONTROL_DIR, exist_ok=True)
+    path = os.path.join(_CONTROL_DIR, f"request-wifi-{verb}")
+    # 0600: the connect payload carries the PSK; it lives only until the host
+    # consumes it on the next thrive-wifi run. Written to a fresh fd so perms
+    # apply before content lands.
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(payload)
+
+def _require_signed_in(request: Request):
+    user = current_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+def _require_admin(request: Request):
+    user = _require_signed_in(request)
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    return user
+
+@app.get("/system/wifi")
+def wifi_status(request: Request):
+    """Current Wi-Fi state + whether the panel should show. Any signed-in user may
+    read; only admins may scan/connect/forget. `available` is true only when the
+    host channel exists AND a wireless interface is actually present."""
+    user = _require_signed_in(request)
+    status = _read_json(_WIFI_STATUS) or {}
+    available = _wifi_channel() and bool(status.get("interface"))
+    return {"available": available,
+            "is_admin": user.get("role") == "admin",
+            "status": status}
+
+@app.get("/system/wifi/scan")
+def wifi_scan_results(request: Request):
+    """Last scan results (written by the host helper). Any signed-in user."""
+    _require_signed_in(request)
+    return _read_json(_WIFI_SCAN) or {"networks": [], "updated": None}
+
+@app.post("/system/wifi/scan")
+def wifi_scan(request: Request):
+    """Admin: queue a scan. The UI then polls GET /system/wifi/scan for results."""
+    _require_admin(request)
+    if not _wifi_channel():
+        raise HTTPException(status_code=409, detail="Wi-Fi control isn't available on this host")
+    try:
+        _wifi_write_request("scan")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Couldn't queue scan: {e}")
+    return {"ok": True}
+
+@app.post("/system/wifi/connect")
+def wifi_connect(request: Request, body: dict):
+    """Admin: join a network. Body: {ssid, psk?} — psk omitted/empty = open network.
+    The SSID+PSK travel as JSON payload to the host helper, which hands them to
+    wpa_passphrase; the API never runs them."""
+    _require_admin(request)
+    if not _wifi_channel():
+        raise HTTPException(status_code=409, detail="Wi-Fi control isn't available on this host")
+    ssid = (body.get("ssid") or "").strip()
+    psk  = body.get("psk") or ""
+    if not ssid:
+        raise HTTPException(status_code=400, detail="SSID required")
+    if psk and not (8 <= len(psk) <= 63):
+        raise HTTPException(status_code=400, detail="Wi-Fi password must be 8–63 characters")
+    try:
+        _wifi_write_request("connect", json.dumps({"ssid": ssid, "psk": psk}))
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Couldn't queue connect: {e}")
+    return {"ok": True, "ssid": ssid}
+
+@app.post("/system/wifi/forget")
+def wifi_forget(request: Request):
+    """Admin: drop the saved network and take the radio down."""
+    _require_admin(request)
+    if not _wifi_channel():
+        raise HTTPException(status_code=409, detail="Wi-Fi control isn't available on this host")
+    try:
+        _wifi_write_request("forget")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Couldn't queue forget: {e}")
+    return {"ok": True}
 
 # ── bootstrap modules on startup ──────────────────────────────────────────────
 @app.on_event("startup")

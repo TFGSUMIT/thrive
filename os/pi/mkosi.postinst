@@ -32,6 +32,14 @@ enable_unit sprout-grow.service  # grow root to fill the SD card on first boot (
 # not enabled directly. The marker it drops surfaces the buttons in thrive.
 enable_unit thrive-power.path
 enable_unit thrive-power-init.service
+
+# Wi-Fi setup (#83): host-side watcher for Settings → Wi-Fi (scan/connect/forget).
+# thrive-wifi.service fires from the .path; the init drops the .wifi-available
+# marker that surfaces the panel; the timer keeps status fresh. wpa_supplicant@
+# <iface> is started on demand by the helper (not enabled here).
+enable_unit thrive-wifi.path
+enable_unit thrive-wifi-init.service
+enable_unit thrive-wifi-status.timer timers.target
 # kiosk-vs-desktop session is decided at the END of this script, keyed on whether the
 # `desktop` profile installed lightdm — so the two editions never clobber each other.
 

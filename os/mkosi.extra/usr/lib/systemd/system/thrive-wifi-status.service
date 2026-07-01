@@ -1,0 +1,12 @@
+# thriveOS: refresh thrive Wi-Fi status (SSID / IP / signal) into the control
+# dir. Triggered by thrive-wifi-status.timer; STATUS_ONLY=1 makes the helper only
+# rewrite wifi-status.json (no request draining), so the Settings panel shows a
+# live link state without the user having to act.
+[Unit]
+Description=Refresh thrive Wi-Fi status
+ConditionPathExists=/opt/thrive/trunk/data/control
+
+[Service]
+Type=oneshot
+Environment=STATUS_ONLY=1
+ExecStart=/usr/local/bin/thrive-wifi

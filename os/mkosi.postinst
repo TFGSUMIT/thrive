@@ -33,6 +33,11 @@ enable_unit thrive.service     # the appliance: pulls the thrive repo + runs tru
 enable_unit thrive-power.path
 enable_unit thrive-power-init.service
 
+# NOTE: Settings → Wi-Fi (#83) is intentionally Pi-only for now — its host units
+# are enabled in pi/mkosi.postinst and its tools (wpasupplicant/iw/firmware-realtek)
+# baked in pi/mkosi.conf. This amd64 image is a deliberately WIRED desktop/server
+# appliance (see the "NO NetworkManager" note in mkosi.conf), so no Wi-Fi channel here.
+
 # networking: systemd-networkd brings up wired ethernet via DHCP (20-dhcp.network),
 # systemd-resolved provides DNS. This makes network-online.target reliably reached —
 # which thrive.service waits on before it can clone the repo + pull images.

@@ -1,0 +1,19 @@
+# thriveOS networking: DHCP any wireless interface once wpa_supplicant has
+# associated it. Pairs with wpa_supplicant@<iface> (started by thrive-wifi on
+# connect) — networkd handles addressing, wpa_supplicant handles association.
+# Wired (20-dhcp.network) stays the appliance default; this just lets Wi-Fi work
+# when configured. Higher number = matched after the wired rule.
+[Match]
+Name=wlan*
+
+[Network]
+DHCP=yes
+IgnoreCarrierLoss=3s
+
+# Higher metric than wired (networkd's default 1024) so a wired link, when
+# present, stays the preferred default route; Wi-Fi carries traffic otherwise.
+[DHCPv4]
+RouteMetric=2048
+
+[Link]
+RequiredForOnline=no

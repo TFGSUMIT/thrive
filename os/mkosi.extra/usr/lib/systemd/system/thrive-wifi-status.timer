@@ -1,0 +1,13 @@
+# thriveOS: periodically refresh Wi-Fi status so Settings → Wi-Fi shows a live
+# link state (connected SSID / IP / signal). Light: a status-only helper run.
+[Unit]
+Description=Periodically refresh thrive Wi-Fi status
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=20s
+AccuracySec=5s
+Unit=thrive-wifi-status.service
+
+[Install]
+WantedBy=timers.target

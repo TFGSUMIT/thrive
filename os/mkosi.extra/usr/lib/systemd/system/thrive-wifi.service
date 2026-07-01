@@ -1,0 +1,9 @@
+# thriveOS: execute a queued thrive Wi-Fi request. Triggered by thrive-wifi.path
+# (not enabled directly). Runs as root so it can (re)configure wpa_supplicant and
+# bring the radio up; the executor consumes each request file as it runs.
+[Unit]
+Description=Execute a queued thrive Wi-Fi request
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/thrive-wifi
