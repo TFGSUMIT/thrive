@@ -565,13 +565,22 @@ function signalBars(dbm) {
   if (dbm >= -75) return 2
   return 1
 }
+// Signal-strength colour: green (strong) → yellow (ok) → red (weak).
+function barColor(dbm) {
+  const n = signalBars(dbm)
+  if (n >= 3) return 'var(--color-success,#22c55e)'
+  if (n === 2) return 'var(--color-warning,#eab308)'
+  return 'var(--color-danger,#ef4444)'
+}
 function Bars({ dbm }) {
   const n = signalBars(dbm)
+  const c = barColor(dbm)
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 1, height: 12 }} title={dbm != null ? `${dbm} dBm` : 'unknown'}>
+    <span style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 1, height: 12 }}
+      title={dbm != null ? `${dbm} dBm signal` : 'unknown signal'}>
       {[4, 8, 11].map((h, i) => (
         <span key={i} style={{ width: 3, height: h, borderRadius: 1,
-          background: i < n ? 'var(--color-success,#22c55e)' : 'var(--bg-tertiary,#333)' }} />
+          background: i < n ? c : 'var(--bg-tertiary,#333)' }} />
       ))}
     </span>
   )
@@ -613,12 +622,20 @@ function WifiSection() {
 
   const connect = async (ssid, secured) => {
     if (secured && !pw) { setMsg('Enter the network password'); return }
-    setBusy(true); setMsg(null)
+    setBusy(true); setMsg(`Connecting to ${ssid}…`); setSel(null); setPw('')
     try {
       await api.post('/system/wifi/connect', { ssid, psk: secured ? pw : '' })
-      setMsg(`Connecting to ${ssid}…`); setSel(null); setPw('')
-      // give the host a moment to associate + DHCP, then refresh status a few times
-      for (let i = 0; i < 6; i++) { await new Promise(r => setTimeout(r, 2500)); await loadStatus() }
+      // poll until the host reports it associated + got an IP, then tidy up:
+      // clear the status message and collapse the scan list (window shrinks).
+      let joined = false
+      for (let i = 0; i < 8; i++) {
+        await new Promise(r => setTimeout(r, 2000))
+        const s = await api.get('/system/wifi').catch(() => null)
+        if (s) setInfo(s)
+        if (s?.status?.connected && s.status.ssid === ssid) { joined = true; break }
+      }
+      if (joined) { setMsg(null); setScan(null) }
+      else setMsg('Still connecting… give it a moment.')
     } catch (e) { setMsg(e.message) } finally { setBusy(false) }
   }
 
@@ -635,12 +652,12 @@ function WifiSection() {
       <div style={{ ...body, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {/* current link state */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div style={{ fontSize: 13 }}>
+          <div style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
             {st.connected
-              ? <span>📶 <b>{st.ssid}</b>
+              ? <><Bars dbm={st.signal_dbm} /><span><b>{st.ssid}</b>
                   <span style={{ fontSize: 11, color: 'var(--text-tertiary,#888)', marginLeft: 8, fontFamily: 'monospace' }}>
                     {st.ip || 'no IP yet'}{st.signal_dbm != null ? ` · ${st.signal_dbm} dBm` : ''}
-                  </span></span>
+                  </span></span></>
               : <span style={{ color: 'var(--text-secondary,#aaa)' }}>Not connected
                   <span style={{ fontSize: 11, color: 'var(--text-tertiary,#666)', marginLeft: 8, fontFamily: 'monospace' }}>{st.interface || 'wlan'}</span></span>}
           </div>
@@ -686,9 +703,6 @@ function WifiSection() {
         )}
 
         {msg && <div style={{ fontSize: 12, color: 'var(--text-secondary,#aaa)' }}>{msg}</div>}
-        <div style={{ fontSize: 10, color: 'var(--text-tertiary,#555)', lineHeight: 1.6 }}>
-          Joins this appliance to a wireless network. Wired ethernet, when present, stays the preferred connection.
-        </div>
       </div>
     </CollapsibleCard>
   )
