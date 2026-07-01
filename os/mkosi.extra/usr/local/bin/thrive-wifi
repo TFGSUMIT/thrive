@@ -139,8 +139,11 @@ if [ "${STATUS_ONLY:-0}" = "1" ]; then
 fi
 
 # Request-driven invocation (the .path) — drain queued requests, then refresh.
-for req in "$CTRL"/request-wifi-*; do
-    verb=${req##*/request-wifi-}
+# NOTE: the prefix is `wifi-req-`, NOT `request-wifi-`: thrive-power (#39) watches
+# the broader glob `request-*` in this same dir and would grab (and discard) any
+# `request-wifi-*` file before we saw it. `wifi-req-*` sidesteps that overlap.
+for req in "$CTRL"/wifi-req-*; do
+    verb=${req##*/wifi-req-}
     payload="$(cat "$req" 2>/dev/null || true)"
     rm -f "$req"                       # consume first so a failed action can't loop
     case "$verb" in

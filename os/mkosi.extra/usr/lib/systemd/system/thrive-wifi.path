@@ -1,12 +1,14 @@
 # thriveOS: watch for thrive Wi-Fi requests (scan/connect/forget). When the API
-# drops a request-wifi-<verb> file into the (host-side) control dir, fire
+# drops a wifi-req-<verb> file into the (host-side) control dir, fire
 # thrive-wifi.service to act on it. Path units watch the nearest existing
 # ancestor, so this is safe before thrive-wifi-init creates the control dir.
+# The `wifi-req-` prefix (not `request-wifi-`) keeps these clear of thrive-power's
+# broader `request-*` watcher, which would otherwise consume & discard them.
 [Unit]
 Description=Watch for thrive Wi-Fi requests
 
 [Path]
-PathExistsGlob=/opt/thrive/trunk/data/control/request-wifi-*
+PathExistsGlob=/opt/thrive/trunk/data/control/wifi-req-*
 Unit=thrive-wifi.service
 
 [Install]

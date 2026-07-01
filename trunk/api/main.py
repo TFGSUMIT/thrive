@@ -221,7 +221,9 @@ def _wifi_channel() -> bool:
 
 def _wifi_write_request(verb: str, payload: str = "") -> None:
     os.makedirs(_CONTROL_DIR, exist_ok=True)
-    path = os.path.join(_CONTROL_DIR, f"request-wifi-{verb}")
+    # `wifi-req-` prefix (not `request-wifi-`): the Power watcher globs `request-*`
+    # in this same dir and would consume/discard our files. Keep them disjoint.
+    path = os.path.join(_CONTROL_DIR, f"wifi-req-{verb}")
     # 0600: the connect payload carries the PSK; it lives only until the host
     # consumes it on the next thrive-wifi run. Written to a fresh fd so perms
     # apply before content lands.
