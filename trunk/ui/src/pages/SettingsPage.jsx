@@ -49,12 +49,20 @@ function SwitchField({ label, on, onChange, disabled, color }) {
 
 // Collapsible settings card. Open/closed state is remembered per-title in
 // localStorage. `right` header controls only show when expanded.
+// Responds to the page-wide `thrive:settings-cards` broadcast so the header's
+// Collapse-all / Expand-all can fold/unfold every card at once (persisting each).
 function CollapsibleCard({ title, right, defaultOpen = true, children }) {
   const key = `settings.open.${title}`
+  const setPersisted = (n) => { try { localStorage.setItem(key, n ? '1' : '0') } catch {} }
   const [open, setOpen] = useState(() => {
     try { const v = localStorage.getItem(key); return v === null ? defaultOpen : v === '1' } catch { return defaultOpen }
   })
-  const toggle = () => setOpen(o => { const n = !o; try { localStorage.setItem(key, n ? '1' : '0') } catch {} return n })
+  const toggle = () => setOpen(o => { const n = !o; setPersisted(n); return n })
+  useEffect(() => {
+    const onBroadcast = (e) => { const n = !!e.detail?.open; setPersisted(n); setOpen(n) }
+    window.addEventListener('thrive:settings-cards', onBroadcast)
+    return () => window.removeEventListener('thrive:settings-cards', onBroadcast)
+  }, [key])
   return (
     <div style={card}>
       <div onClick={toggle}
@@ -763,8 +771,14 @@ export default function SettingsPage() {
     <div className="settings-scroll" style={{ height: 'calc(100vh - 48px)', overflowY: 'auto' }}>
       <style>{`.settings-scroll::-webkit-scrollbar{display:none}.settings-scroll{scrollbar-width:none;-ms-overflow-style:none}`}</style>
       <div style={{ maxWidth: 700, margin: '0 auto', padding: '1.5rem 1.5rem 3rem' }}>
-      <div style={{ marginBottom: '1.5rem' }}>
+      <div style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <h1 style={{ fontSize: 14, fontWeight: 500, letterSpacing: '0.15em', textTransform: 'uppercase' }}>Settings</h1>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button style={{ ...btnS, padding: '4px 10px', fontSize: 10 }}
+            onClick={() => window.dispatchEvent(new CustomEvent('thrive:settings-cards', { detail: { open: false } }))}>Collapse all</button>
+          <button style={{ ...btnS, padding: '4px 10px', fontSize: 10 }}
+            onClick={() => window.dispatchEvent(new CustomEvent('thrive:settings-cards', { detail: { open: true } }))}>Expand all</button>
+        </div>
       </div>
 
       {/* Front page — server-wide '/' destination; admin-controlled, sits at the top */}
