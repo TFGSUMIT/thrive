@@ -50,14 +50,15 @@ const toLocalInput = (iso) => { const d = new Date(iso); return `${dkey(d)}T${pa
 const toISO        = (local) => new Date(local).toISOString()
 const fmtTime      = (iso) => { const d = new Date(iso); return `${pad(d.getHours())}:${pad(d.getMinutes())}` }
 const addDays      = (ymd, n) => { const d = new Date(`${ymd}T12:00:00`); d.setDate(d.getDate() + n); return dkey(d) }
-const fmtMoney     = (cents) => (cents < 0 ? '−' : '+') + '$' + Math.abs(Math.round(cents / 100)).toLocaleString('en-US')
+// no +/- sign — direction is conveyed by colour (green income / red expense), see #49
+const fmtMoney     = (cents) => '$' + Math.abs(Math.round(cents / 100)).toLocaleString('en-US')
 
 // Budget overlay (feature-detected): scheduled transactions render as read-only
 // all-day chips coloured by type.
 const BUDGET_CAL = {
-  'budget-income':   { name: 'Scheduled income',   color: '#22c55e' },
-  'budget-expense':  { name: 'Scheduled expense',  color: '#f59e0b' },
-  'budget-transfer': { name: 'Scheduled transfer', color: '#3b82f6' },
+  'budget-income':   { name: 'Scheduled income',   color: '#22c55e' },   // green (#49)
+  'budget-expense':  { name: 'Scheduled expense',  color: '#ef4444' },   // red (#49) — was amber
+  'budget-transfer': { name: 'Scheduled transfer', color: '#3b82f6' },   // blue (neither in/out)
 }
 
 // the scrollable window: this many months before/after today (≈ 2 years each way)
