@@ -10,5 +10,7 @@ export default {
   path: '/fps',
   Page: FpsPage,
   Overlay: FpsOverlay,
-  settings: { title: 'FPS Meter', Panel: FpsPanel },
+  // group:'device' → render inside core's Device settings card (with Power/Wi-Fi/UI)
+  // instead of as a standalone card. Core stays module-agnostic; the module opts in.
+  settings: { title: 'FPS Meter', Panel: FpsPanel, group: 'device' },
 }

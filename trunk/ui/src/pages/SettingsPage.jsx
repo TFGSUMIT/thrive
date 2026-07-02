@@ -99,6 +99,12 @@ function GroupHead({ children }) {
   return <div style={{ padding: '8px 16px', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-tertiary,#555)', background: 'var(--bg-tertiary,#222)' }}>{children}</div>
 }
 
+// Subheading for sections grouped inside one CollapsibleCard (e.g. the Device
+// card stacks Power / Wi-Fi / UI / module panels under these bars).
+function SubHead({ children }) {
+  return <div style={{ padding: '9px 16px', fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--text-secondary,#999)', background: 'var(--bg-tertiary,#1e1e1e)', borderTop: '1px solid var(--border-color,#2a2a2a)' }}>{children}</div>
+}
+
 // Front page: the server-wide choice of what loads at '/' (a module's page, or
 // the module tiles). Unset = auto: the only active module if there's just one,
 // else Home, else tiles. Admin-controlled.
@@ -181,7 +187,9 @@ function UISection() {
   useEffect(() => { api.get('/system/info').then(setDevice).catch(() => {}) }, [])
 
   return (
-    <div style={body}>
+    <>
+      <SubHead>UI</SubHead>
+      <div style={body}>
       <div style={lbl}>Theme</div>
       <select style={inp} value={theme} onChange={e => changeTheme(e.target.value)} disabled={!user}>
         {THEMES.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -218,6 +226,7 @@ function UISection() {
           : <span style={{ color: 'var(--text-tertiary,#666)' }}>IP unavailable</span>}
       </div>
     </div>
+    </>
   )
 }
 
@@ -648,7 +657,8 @@ function WifiSection() {
   const nets = scan?.networks || []
 
   return (
-    <CollapsibleCard title="Wi-Fi" defaultOpen={false}>
+    <>
+      <SubHead>Wi-Fi</SubHead>
       <div style={{ ...body, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {/* current link state */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -704,7 +714,7 @@ function WifiSection() {
 
         {msg && <div style={{ fontSize: 12, color: 'var(--text-secondary,#aaa)' }}>{msg}</div>}
       </div>
-    </CollapsibleCard>
+    </>
   )
 }
 
@@ -744,7 +754,8 @@ function PowerSection() {
 
   const actions = info.actions || []
   return (
-    <CollapsibleCard title="Power" defaultOpen={true}>
+    <>
+      <SubHead>Power</SubHead>
       <div style={{ ...body, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ fontSize: 11, color: 'var(--text-tertiary,#888)', lineHeight: 1.6 }}>
           Control the physical appliance serving thrive. Reboot &amp; shut down act on the hardware; restart bounces just the app.
@@ -764,7 +775,7 @@ function PowerSection() {
         </div>
         {msg && <div style={{ fontSize: 12, color: 'var(--text-secondary,#aaa)' }}>{msg}</div>}
       </div>
-    </CollapsibleCard>
+    </>
   )
 }
 
@@ -780,6 +791,11 @@ export default function SettingsPage() {
       .catch(() => {})
   }, [])
   const modulePanels = MODULES.filter(m => m.settings && activeIds.has(m.id))
+  // Module panels can opt into a core settings group (e.g. settings.group:'device')
+  // to render inside that grouped card instead of as their own top-level card.
+  // Core names no module — modules self-declare the group.
+  const devicePanels = modulePanels.filter(m => m.settings.group === 'device')
+  const otherPanels  = modulePanels.filter(m => !m.settings.group)
 
   return (
     <div className="settings-scroll" style={{ height: 'calc(100vh - 48px)', overflowY: 'auto' }}>
@@ -826,25 +842,32 @@ export default function SettingsPage() {
       {user?.role === 'admin' && <PermissionsSection />}
 
 
-      <CollapsibleCard title="UI" defaultOpen={false}>
+      {/* Device — this appliance/display: Power, Wi-Fi, UI, plus any module panel
+          that opts into the 'device' group (e.g. FPS Meter). Power/Wi-Fi self-hide
+          off a thriveOS appliance; UI is always present, so the card always shows. */}
+      <CollapsibleCard title="Device" defaultOpen={false}>
+        {user?.role === 'admin' && <PowerSection />}
+        {user?.role === 'admin' && <WifiSection />}
         <UISection />
+        {devicePanels.map(m => {
+          const S = m.settings
+          const Panel = S.Panel
+          return (
+            <div key={m.id}>
+              <SubHead>{S.title}</SubHead>
+              {S.padded ? <div style={{ padding: 16 }}><Panel /></div> : <Panel />}
+            </div>
+          )
+        })}
       </CollapsibleCard>
-
-      {/* Power — appliance hardware/app controls; sits with the device (UI)
-          settings and opens by default so it's easy to find. Self-hides off
-          thriveOS (the API reports available:false). */}
-      {user?.role === 'admin' && <PowerSection />}
-
-      {/* Wi-Fi — join the appliance to a wireless network; self-hides off a
-          thriveOS appliance (API reports available:false), same as Power. */}
-      {user?.role === 'admin' && <WifiSection />}
 
       <CollapsibleCard title="Modules">
         <ModulesSection />
       </CollapsibleCard>
 
-      {/* Module settings panels — discovered from each active module's ui/index.jsx */}
-      {modulePanels.map(m => {
+      {/* Module settings panels — each active module's own card (those not grouped
+          into a core card like Device). Discovered from ui/index.jsx; core names none. */}
+      {otherPanels.map(m => {
         const S = m.settings
         const Panel = S.Panel
         return (
