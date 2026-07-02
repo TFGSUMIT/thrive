@@ -131,7 +131,9 @@ function FrontPageSection() {
   }
 
   return (
-    <div style={body}>
+    <>
+      <SubHead>Front page</SubHead>
+      <div style={body}>
       <label style={{ ...lbl, display: 'block' }}>Loads at start</label>
       <select value={front} onChange={e => save(e.target.value)} style={{ ...inp, fontSize: 12 }}>
         <option value="">Default · {defaultLabel}</option>
@@ -143,6 +145,7 @@ function FrontPageSection() {
         {saving && ' Saving…'}{saved && ' Saved ✓'}
       </div>
     </div>
+    </>
   )
 }
 
@@ -811,12 +814,6 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Front page — server-wide '/' destination; admin-controlled, sits at the top */}
-      {user?.role === 'admin' && (
-        <CollapsibleCard title="Front page">
-          <FrontPageSection />
-        </CollapsibleCard>
-      )}
 
       {/* Account: admins manage everything (incl. their own Sign out) in the
           Accounts card below; members get a simple identity + Sign out card. */}
@@ -842,12 +839,14 @@ export default function SettingsPage() {
       {user?.role === 'admin' && <PermissionsSection />}
 
 
-      {/* Device — this appliance/display: Power, Wi-Fi, UI, plus any module panel
-          that opts into the 'device' group (e.g. FPS Meter). Power/Wi-Fi self-hide
-          off a thriveOS appliance; UI is always present, so the card always shows. */}
+      {/* Device — this appliance/display: Power, Wi-Fi, Front page, UI, plus any
+          module panel that opts into the 'device' group (e.g. FPS Meter). Power/
+          Wi-Fi/Front-page are admin-only + self-hiding; UI is always present, so
+          the card always shows. */}
       <CollapsibleCard title="Device" defaultOpen={false}>
         {user?.role === 'admin' && <PowerSection />}
         {user?.role === 'admin' && <WifiSection />}
+        {user?.role === 'admin' && <FrontPageSection />}
         <UISection />
         {devicePanels.map(m => {
           const S = m.settings
