@@ -726,10 +726,10 @@ function WifiSection() {
 // reports available:false and this renders nothing. The buttons drop a request
 // file the host-side thrive-power.service executes.
 const POWER_BTNS = [
-  { action: 'reboot',         label: '⟳ Reboot',         danger: true,  confirm: 'Reboot this device now?' },
-  { action: 'poweroff',       label: '⏻ Shut down',      danger: true,  confirm: 'Shut down this device? It needs a physical power-cycle to come back.' },
-  { action: 'restart-stack',  label: '♻ Restart thrive', danger: false, confirm: 'Restart the thrive app? The UI will blink for a few seconds.' },
-  { action: 'relaunch-kiosk', label: '🖥 Relaunch kiosk', danger: false, confirm: 'Relaunch the kiosk display?' },
+  { action: 'reboot',         icon: '⟳', tip: 'Reboot',         danger: true,  confirm: 'Reboot this device now?' },
+  { action: 'poweroff',       icon: '⏻', tip: 'Shut down',      danger: true,  confirm: 'Shut down this device? It needs a physical power-cycle to come back.' },
+  { action: 'restart-stack',  icon: '♻', tip: 'Restart thrive', danger: false, confirm: 'Restart the thrive app? The UI will blink for a few seconds.' },
+  { action: 'relaunch-kiosk', icon: '🖥', tip: 'Relaunch kiosk', danger: false, confirm: 'Relaunch the kiosk display?' },
 ]
 
 function PowerSection() {
@@ -760,9 +760,6 @@ function PowerSection() {
     <>
       <SubHead>Power</SubHead>
       <div style={{ ...body, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ fontSize: 11, color: 'var(--text-tertiary,#888)', lineHeight: 1.6 }}>
-          Control the physical appliance serving thrive. Reboot &amp; shut down act on the hardware; restart bounces just the app.
-        </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           {POWER_BTNS.filter(b => actions.includes(b.action)).map(b => (
             confirming === b.action
@@ -771,9 +768,11 @@ function PowerSection() {
                   <button style={{ ...btnS, color: 'var(--color-danger,#ef4444)', borderColor: 'var(--color-danger,#ef4444)' }} disabled={!!busy} onClick={() => run(b.action)}>Yes</button>
                   <button style={btnS} onClick={() => setConfirming(null)}>No</button>
                 </span>
-              : <button key={b.action} disabled={!!busy}
-                  style={{ ...btnS, opacity: busy ? 0.5 : 1, ...(b.danger ? { color: 'var(--color-danger,#ef4444)', borderColor: 'var(--color-danger,#ef4444)' } : {}) }}
-                  onClick={() => { setConfirming(b.action); setMsg(null) }}>{b.label}</button>
+              : <button key={b.action} disabled={!!busy} title={b.tip} aria-label={b.tip}
+                  style={{ ...btnS, padding: 0, width: 40, height: 40, fontSize: 18, lineHeight: 1,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: busy ? 0.5 : 1,
+                    ...(b.danger ? { color: 'var(--color-danger,#ef4444)', borderColor: 'var(--color-danger,#ef4444)' } : {}) }}
+                  onClick={() => { setConfirming(b.action); setMsg(null) }}>{b.icon}</button>
           ))}
         </div>
         {msg && <div style={{ fontSize: 12, color: 'var(--text-secondary,#aaa)' }}>{msg}</div>}
