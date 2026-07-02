@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mdi/js": "^7.4.47",
     "chart.js": "^4.4.4",
     "chartjs-chart-sankey": "^0.12.1",
     "exifr": "^7.1.3",

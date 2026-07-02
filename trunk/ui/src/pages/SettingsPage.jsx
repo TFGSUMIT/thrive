@@ -3,6 +3,7 @@
 // thrive UI — user management lives on its own page (UsersPage / 👥)
 // =============================================================================
 import { useState, useEffect, useRef } from 'react'
+import { mdiRestart, mdiPower, mdiRefresh, mdiMonitor } from '@mdi/js'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../api'
 import { THEMES, applyTheme, DEFAULT_THEME } from '../theme'
@@ -732,19 +733,18 @@ const POWER_BTNS = [
   { action: 'relaunch-kiosk', tip: 'Relaunch kiosk', danger: false, confirm: 'Relaunch the kiosk display?' },
 ]
 
-// Clean inline (lucide-style) glyphs so the Power controls read as one consistent
-// icon set rather than a mix of text symbols + emoji. Keyed by action.
+// Material Design Icons (@mdi/js — path data only, tree-shaken) so the Power
+// controls read as one consistent, professional icon set. MDI glyphs are filled.
 const POWER_ICONS = {
-  reboot:           <path d="M3 12a9 9 0 1 0 3-6.7M3 4v4h4" />,                                  // rotate-cw arrow
-  poweroff:         <><line x1="12" y1="2" x2="12" y2="12" /><path d="M18.36 6.64a9 9 0 1 1-12.73 0" /></>, // power symbol
-  'restart-stack':  <><path d="M21 12a9 9 0 1 1-3-6.7" /><path d="M21 3v4h-4" /><path d="M12 8v4l2 2" /></>, // refresh + clock hand (app)
-  'relaunch-kiosk': <><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></>, // monitor
+  reboot:           mdiRestart,   // circular-arrow reboot
+  poweroff:         mdiPower,     // power symbol
+  'restart-stack':  mdiRefresh,   // refresh (restart the app)
+  'relaunch-kiosk': mdiMonitor,   // the display
 }
 function PowerIcon({ action }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {POWER_ICONS[action]}
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+      <path d={POWER_ICONS[action]} fill="currentColor" />
     </svg>
   )
 }
