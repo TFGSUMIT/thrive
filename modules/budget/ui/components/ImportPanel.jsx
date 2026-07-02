@@ -22,10 +22,12 @@ const fmtAmt = (n) => `${n < 0 ? '-' : ''}$${Math.abs(Number(n)).toFixed(2)}`
 // Columns for a PDF group's preview table — mirrors the CSV/Plaid import table
 // (same field colours) so the two views read the same. PDF rows are already
 // structured, so these are fixed (no column-mapping bubbles needed).
+const POS_GREEN = 'var(--color-success,#22c55e)'
 const PDF_COLS = [
     { key: 'date', meta: FIELD_META.date, cell: r => r.date },
     { key: 'description', meta: FIELD_META.payee, cell: r => r.description },
-    { key: 'amount', meta: FIELD_META.amount, cell: r => fmtAmt(r.amount), align: 'right' },
+    { key: 'amount', meta: FIELD_META.amount, cell: r => fmtAmt(r.amount), align: 'right',
+      color: r => r.amount < 0 ? FIELD_META.amount.color : POS_GREEN },
 ]
 
 // PDF statement parsing (#84): the backend extracts the PDF's text layer
@@ -80,11 +82,28 @@ export default function ImportPanel({
     const [pdfGroups, setPdfGroups] = useState(null)  // [{label, rows, accountId, matchedRows}]
     const [pdfImporting, setPdfImporting] = useState(false)
     const [pdfUrl, setPdfUrl] = useState(null)      // blob: URL of the dropped file, for the side-by-side viewer
+    const [splitPct, setSplitPct] = useState(45)    // PDF-pane width % in the full-screen split
     const dropRef = useRef(null)
+    const splitRef = useRef(null)
 
     // revoke the previous blob URL when it changes / on unmount (no leaks)
     useEffect(() => () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl) }, [pdfUrl])
     const clearPdf = () => { setPdfGroups(null); setPdfInfo(null); setPdfUrl(null) }
+
+    // drag the divider between the PDF and the transactions panes
+    const startResize = (e) => {
+        e.preventDefault()
+        const move = (ev) => {
+            const rect = splitRef.current?.getBoundingClientRect()
+            if (!rect) return
+            const pct = ((ev.clientX - rect.left) / rect.width) * 100
+            setSplitPct(Math.min(80, Math.max(20, pct)))
+        }
+        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); document.body.style.userSelect = '' }
+        document.body.style.userSelect = 'none'
+        window.addEventListener('mousemove', move)
+        window.addEventListener('mouseup', up)
+    }
 
     const importPreviewLimit = parseInt(localStorage.getItem('importPreviewLimit') || '20')
 
@@ -367,23 +386,35 @@ export default function ImportPanel({
                 </div>
             )}
 
-            {/* PDF statement → source doc on the left, one section per detected
-                account (auto-matched on last-4) on the right. */}
-            {pdfGroups && (
-                <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                    {pdfUrl && (
-                        <div style={{ flex: '1 1 400px', minWidth: 300, position: 'sticky', top: 8, alignSelf: 'stretch' }}>
-                            <iframe title="source statement" src={`${pdfUrl}#view=FitH`}
-                                style={{ width: '100%', height: '78vh', border: '1px solid var(--border)', borderRadius: 8, background: '#fff' }} />
+            {/* PDF statement → full-screen split: source doc (left, resizable) beside
+                one section per detected account (right, auto-matched on last-4). */}
+            {pdfGroups && (() => {
+                const mapped = pdfGroups.filter(g => g.accountId)
+                const total = mapped.reduce((n, g) => n + g.rows.length, 0)
+                return (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'var(--bg-base, #0f0f0f)', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+                        <span style={{ fontSize: 13 }}>
+                            📄 {pdfInfo.name} — {pdfInfo.count} transactions · {pdfGroups.length} account{pdfGroups.length === 1 ? '' : 's'} detected
+                            {pdfInfo.skipped > 0 && ` · ${pdfInfo.skipped} page${pdfInfo.skipped === 1 ? '' : 's'} had no text`}
+                        </span>
+                        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                            <button className="btn btn-primary" disabled={pdfImporting || !mapped.length} onClick={importPdf}>
+                                {pdfImporting ? 'Importing…' : `Import ${total} into ${mapped.length} account${mapped.length === 1 ? '' : 's'}`}
+                            </button>
+                            <button className="btn" onClick={onCancel}>Cancel</button>
                         </div>
-                    )}
-                    <div style={{ flex: '2 1 520px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <div className="import-plaid-badge">
-                        📄 {pdfInfo.name} — {pdfInfo.count} transactions · {pdfGroups.length} account{pdfGroups.length === 1 ? '' : 's'} detected
-                        {pdfInfo.skipped > 0 && ` · ${pdfInfo.skipped} page${pdfInfo.skipped === 1 ? '' : 's'} had no text`}
-                        <button className="btn btn-ghost" style={{ marginLeft: 'auto' }}
-                            onClick={clearPdf}>✕ Clear</button>
                     </div>
+                    <div ref={splitRef} style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+                        {pdfUrl && (
+                            <div style={{ width: `${splitPct}%`, minWidth: 0, flexShrink: 0 }}>
+                                <iframe title="source statement" src={`${pdfUrl}#view=FitH`}
+                                    style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }} />
+                            </div>
+                        )}
+                        <div onMouseDown={startResize} title="Drag to resize"
+                            style={{ width: 8, cursor: 'col-resize', background: 'var(--border)', flexShrink: 0 }} />
+                        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {pdfGroups.map((g, idx) => {
                         const src = g.matchedRows || g.rows
                         const nNew = g.matchedRows ? g.matchedRows.filter(r => !r.matched).length : null
@@ -422,7 +453,7 @@ export default function ImportPanel({
                                                 <div key={i} className={`import-csv-row ${r.matched ? 'import-row--matched' : ''}`}>
                                                     <span className={`import-status ${r.matched ? 'import-status--matched' : 'import-status--new'}`}>{r.matched ? '=' : '+'}</span>
                                                     {PDF_COLS.map(c => (
-                                                        <span key={c.key} className="import-csv-cell" style={{ color: c.meta.color, textAlign: c.align || 'left' }}>{c.cell(r)}</span>
+                                                        <span key={c.key} className="import-csv-cell" style={{ color: c.color ? c.color(r) : c.meta.color, textAlign: c.align || 'left' }}>{c.cell(r)}</span>
                                                     ))}
                                                 </div>
                                             ))}
@@ -437,9 +468,11 @@ export default function ImportPanel({
                             </div>
                         )
                     })}
+                        </div>
                     </div>
                 </div>
-            )}
+                )
+            })()}
 
             {csv && (
                 <>
@@ -549,15 +582,6 @@ export default function ImportPanel({
                 {!requiredMapped && csv && (
                     <span className="muted" style={{ fontSize: '12px' }}>Map all required fields to enable import</span>
                 )}
-                {pdfGroups && (() => {
-                    const mapped = pdfGroups.filter(g => g.accountId)
-                    const total = mapped.reduce((n, g) => n + g.rows.length, 0)
-                    return (
-                        <button className="btn btn-primary" disabled={pdfImporting || !mapped.length} onClick={importPdf}>
-                            {pdfImporting ? 'Importing…' : `Import ${total} into ${mapped.length} account${mapped.length === 1 ? '' : 's'}`}
-                        </button>
-                    )
-                })()}
                 <button className="btn" onClick={onCancel}>Cancel</button>
             </div>
         </div>
