@@ -79,7 +79,12 @@ export default function ImportPanel({
     const [pdfInfo, setPdfInfo] = useState(null)   // { name, pages, count, skipped } once parsed
     const [pdfGroups, setPdfGroups] = useState(null)  // [{label, rows, accountId, matchedRows}]
     const [pdfImporting, setPdfImporting] = useState(false)
+    const [pdfUrl, setPdfUrl] = useState(null)      // blob: URL of the dropped file, for the side-by-side viewer
     const dropRef = useRef(null)
+
+    // revoke the previous blob URL when it changes / on unmount (no leaks)
+    useEffect(() => () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl) }, [pdfUrl])
+    const clearPdf = () => { setPdfGroups(null); setPdfInfo(null); setPdfUrl(null) }
 
     const importPreviewLimit = parseInt(localStorage.getItem('importPreviewLimit') || '20')
 
@@ -115,6 +120,7 @@ export default function ImportPanel({
     async function handlePdf(file) {
         setPdfBusy('Reading PDF…')
         setPdfInfo(null); setPdfGroups(null); setCsv(null); setRows(null)
+        setPdfUrl(URL.createObjectURL(file))   // for the side-by-side source viewer
         try {
             const fd = new FormData()
             fd.append('file', file)
@@ -361,15 +367,22 @@ export default function ImportPanel({
                 </div>
             )}
 
-            {/* PDF statement → one section per detected account, each mapped to a
-                thrive account (auto-matched on last-4) and previewed. */}
+            {/* PDF statement → source doc on the left, one section per detected
+                account (auto-matched on last-4) on the right. */}
             {pdfGroups && (
-                <>
+                <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                    {pdfUrl && (
+                        <div style={{ flex: '1 1 400px', minWidth: 300, position: 'sticky', top: 8, alignSelf: 'stretch' }}>
+                            <iframe title="source statement" src={`${pdfUrl}#view=FitH`}
+                                style={{ width: '100%', height: '78vh', border: '1px solid var(--border)', borderRadius: 8, background: '#fff' }} />
+                        </div>
+                    )}
+                    <div style={{ flex: '2 1 520px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <div className="import-plaid-badge">
                         📄 {pdfInfo.name} — {pdfInfo.count} transactions · {pdfGroups.length} account{pdfGroups.length === 1 ? '' : 's'} detected
                         {pdfInfo.skipped > 0 && ` · ${pdfInfo.skipped} page${pdfInfo.skipped === 1 ? '' : 's'} had no text`}
                         <button className="btn btn-ghost" style={{ marginLeft: 'auto' }}
-                            onClick={() => { setPdfGroups(null); setPdfInfo(null) }}>✕ Clear</button>
+                            onClick={clearPdf}>✕ Clear</button>
                     </div>
                     {pdfGroups.map((g, idx) => {
                         const src = g.matchedRows || g.rows
@@ -424,7 +437,8 @@ export default function ImportPanel({
                             </div>
                         )
                     })}
-                </>
+                    </div>
+                </div>
             )}
 
             {csv && (
