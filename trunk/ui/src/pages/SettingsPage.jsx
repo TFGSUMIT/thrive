@@ -375,15 +375,50 @@ function AccountsSection() {
   const [rowUi,    setRowUi]    = useState({})
   const [resetPw,  setResetPw]  = useState({})
   const [resetPw2, setResetPw2] = useState({})
+  const [perms,    setPerms]    = useState(null)   // { modules:[id], subjects:[{user_id,name,access,is_admin}] }
   const setRow = (id, patch) => setRowUi(p => ({ ...p, [id]: { ...p[id], ...patch } }))
 
   const load = async () => {
     try {
-      const [a, p] = await Promise.all([api.get('/accounts'), api.get('/users').catch(() => [])])
-      setAccounts(a); setProfiles(p)
+      const [a, p, pm] = await Promise.all([
+        api.get('/accounts'), api.get('/users').catch(() => []), api.get('/permissions').catch(() => null),
+      ])
+      setAccounts(a); setProfiles(p); setPerms(pm)
     } catch (e) { setErr(e.message) }
   }
   useEffect(() => { load() }, [])
+
+  // Cycle a subject's module access (—/View/Read/Write); optimistic + persisted.
+  const cyclePerm = async (subj, mid) => {
+    const cur = subj.access[mid] || 'none'
+    const next = PERM_LEVELS[(PERM_LEVELS.indexOf(cur) + 1) % PERM_LEVELS.length]
+    setPerms(d => ({ ...d, subjects: d.subjects.map(s => s.user_id === subj.user_id
+      ? { ...s, access: { ...s.access, [mid]: next } } : s) }))
+    try { await api.put('/permissions', { user_id: subj.user_id, module_id: mid, level: next }); window.dispatchEvent(new Event('thrive:modules-changed')) }
+    catch (e) { setErr(e.message) }
+  }
+
+  // The per-row Permissions dropdown body for a given subject (profile).
+  const permsPanel = (subj) => {
+    if (!subj) return <div style={{ fontSize: 11, color: 'var(--text-tertiary,#888)' }}>Link a profile to this account to set its module access.</div>
+    if (subj.is_admin) return <div style={{ fontSize: 11, color: 'var(--text-tertiary,#888)' }}>Admins always have full access to every module.</div>
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div style={{ ...lbl, marginBottom: 4 }}>Tap to cycle —/View/Read/Write</div>
+        {(perms?.modules || []).map(mid => {
+          const lvl = subj.access[mid] || 'none'
+          return (
+            <div key={mid} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '3px 0' }}>
+              <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--text-secondary,#aaa)' }}>{mid}</span>
+              <button onClick={() => cyclePerm(subj, mid)} style={permChip(lvl)}>{PERM_LABEL[lvl]}</button>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+  const dropBox = { marginTop: 10, maxWidth: 360, padding: 12, background: 'var(--bg-tertiary,#1c1c1c)', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 8 }
+  const subjFor = (userId) => perms?.subjects.find(s => s.user_id === userId) || null
 
   const profileName = (id) => profiles.find(p => p.id === id)?.name
 
@@ -474,6 +509,7 @@ function AccountsSection() {
                   disabled={locked} title={isHead ? "Can't disable the Head of Household" : (isLastAdmin ? "Can't disable the last admin" : '')}
                   onClick={() => toggleDisable(a.id, !a.disabled)}>{a.disabled ? 'Enable' : 'Disable'}</button>
                 <button style={{ ...btnS, padding: '3px 9px', fontSize: 10 }} onClick={() => setRow(a.id, { resetting: !ui.resetting })}>Change pw {ui.resetting ? '▾' : '▸'}</button>
+                <button style={{ ...btnS, padding: '3px 9px', fontSize: 10 }} onClick={() => setRow(a.id, { perms: !ui.perms })}>Permissions {ui.perms ? '▾' : '▸'}</button>
                 {!isHead && (ui.confirmDelete
                   ? <><button style={{ ...btnS, padding: '3px 9px', fontSize: 10, color: 'var(--color-danger,#ef4444)', borderColor: 'var(--color-danger,#ef4444)' }} onClick={() => doDelete(a.id)}>Confirm</button><button style={{ ...btnS, padding: '3px 9px', fontSize: 10 }} onClick={() => setRow(a.id, { confirmDelete: false })}>No</button></>
                   : <button style={{ ...btnS, padding: '3px 9px', fontSize: 10, color: 'var(--color-danger,#ef4444)', borderColor: 'transparent' }} onClick={() => setRow(a.id, { confirmDelete: true })}>Delete</button>)}
@@ -491,14 +527,45 @@ function AccountsSection() {
                 </div>
               </div>
             )}
+            {ui.perms && <div style={dropBox}>{permsPanel(subjFor(a.user_id))}</div>}
           </div>
         )
       })}
+
+      {/* Profiles with no login account (Household, kiosk/passwordless) — they
+          still get per-module permissions, so surface them here as extra rows. */}
+      {(() => {
+        const linked = new Set(accounts.map(a => a.user_id).filter(v => v != null))
+        const orphans = (perms?.subjects || []).filter(s => !linked.has(s.user_id))
+        if (!orphans.length) return null
+        return (
+          <>
+            <GroupHead>Profiles without a login</GroupHead>
+            {orphans.map(subj => {
+              const key = `u${subj.user_id}`
+              const ui = rowUi[key] || {}
+              return (
+                <div key={key} style={{ padding: '12px 16px', borderTop: '1px solid var(--border-color,#2a2a2a)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: 13, fontWeight: 500 }}>{subj.user_id === 0 ? '🏠 Household' : subj.name}</span>
+                      {subj.is_admin && <span style={{ marginLeft: 6, fontSize: 9, color: 'var(--text-tertiary,#666)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>admin</span>}
+                      <span style={{ fontSize: 10, color: 'var(--text-tertiary,#666)', marginLeft: 8 }}>no login</span>
+                    </div>
+                    <button style={{ ...btnS, padding: '3px 9px', fontSize: 10 }} onClick={() => setRow(key, { perms: !ui.perms })}>Permissions {ui.perms ? '▾' : '▸'}</button>
+                  </div>
+                  {ui.perms && <div style={dropBox}>{permsPanel(subj)}</div>}
+                </div>
+              )
+            })}
+          </>
+        )
+      })()}
     </CollapsibleCard>
   )
 }
 
-// ── Permissions matrix (#7 Phase B) — admin-only ──────────────────────────────
+// ── Permissions helpers (#7) — used by the Accounts card's per-profile dropdowns
 const PERM_LEVELS = ['none', 'view', 'read', 'write']
 const PERM_LABEL  = { none: '—', view: 'View', read: 'Read', write: 'Write' }
 const permChip = (lvl) => {
@@ -511,66 +578,6 @@ const permChip = (lvl) => {
   return { width: 48, padding: '4px 0', borderRadius: 5, fontSize: 9, fontWeight: 600, textTransform: 'uppercase',
            letterSpacing: '0.04em', cursor: 'pointer', border: `1px solid ${m.b}`, background: m.bg, color: m.c }
 }
-
-function PermissionsSection() {
-  const [data, setData] = useState(null)   // { modules:[id], subjects:[{user_id,name,access}] }
-  const [err,  setErr]  = useState(null)
-  useEffect(() => { api.get('/permissions').then(setData).catch(e => setErr(e.message)) }, [])
-  if (!data) return null
-
-  const cycle = async (subj, mid) => {
-    const cur = subj.access[mid] || 'none'
-    const next = PERM_LEVELS[(PERM_LEVELS.indexOf(cur) + 1) % PERM_LEVELS.length]
-    setData(d => ({ ...d, subjects: d.subjects.map(s => s.user_id === subj.user_id
-      ? { ...s, access: { ...s.access, [mid]: next } } : s) }))
-    try { await api.put('/permissions', { user_id: subj.user_id, module_id: mid, level: next }); window.dispatchEvent(new Event('thrive:modules-changed')) }
-    catch (e) { setErr(e.message) }
-  }
-
-  return (
-    <CollapsibleCard title="Permissions">
-      <div style={{ padding: '12px 16px 4px', fontSize: 11, color: 'var(--text-tertiary,#888)' }}>
-        Who can see &amp; use each module. Admins always have full access; everyone else starts locked out. Tap a cell to cycle —/View/Read/Write.
-      </div>
-      {err && <div style={{ padding: '0 16px 8px', fontSize: 12, color: 'var(--color-danger,#ef4444)' }}>{err}</div>}
-      <div style={{ overflowX: 'auto', padding: '8px 16px 16px' }}>
-        <table style={{ borderCollapse: 'collapse', fontSize: 11 }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text-tertiary,#666)', fontWeight: 500 }}>Profile</th>
-              {data.modules.map(mid => (
-                <th key={mid} style={{ padding: '4px 4px', color: 'var(--text-tertiary,#666)', fontWeight: 500, height: 78, verticalAlign: 'bottom' }}>
-                  <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', margin: '0 auto', fontFamily: 'var(--font-mono,monospace)' }}>{mid}</div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {data.subjects.map(subj => (
-              <tr key={subj.user_id} style={{ borderTop: '1px solid var(--border-color,#2a2a2a)' }}>
-                <td style={{ padding: '5px 8px', whiteSpace: 'nowrap', fontWeight: 500 }}>
-                  {subj.user_id === 0 ? '🏠 Household' : subj.name}
-                  {subj.is_admin && <span style={{ marginLeft: 6, fontSize: 9, color: 'var(--text-tertiary,#666)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>admin</span>}
-                </td>
-                {data.modules.map(mid => {
-                  const lvl = subj.is_admin ? 'write' : (subj.access[mid] || 'none')
-                  return (
-                    <td key={mid} style={{ padding: 2, textAlign: 'center' }}>
-                      {subj.is_admin
-                        ? <span title="Admins always have full access" style={{ ...permChip('write'), display: 'inline-block', opacity: 0.5, cursor: 'default' }}>{PERM_LABEL.write}</span>
-                        : <button onClick={() => cycle(subj, mid)} title={`${subj.name} · ${mid}: ${lvl}`} style={permChip(lvl)}>{PERM_LABEL[lvl]}</button>}
-                    </td>
-                  )
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </CollapsibleCard>
-  )
-}
-
 
 // ── Wi-Fi setup (#83) — thriveOS appliance only, admin-only ───────────────────
 // Self-hides everywhere the host Wi-Fi helper isn't wired (bare/NAS/amd64): the
@@ -857,9 +864,6 @@ export default function SettingsPage() {
       {user?.id && user.role !== 'admin' && <ChangePasswordSection />}
 
       {user?.role === 'admin' && <AccountsSection />}
-
-      {user?.role === 'admin' && <PermissionsSection />}
-
 
       {/* Device — this appliance/display: Power, Wi-Fi, Front page, UI, plus any
           module panel that opts into the 'device' group (e.g. FPS Meter). Power/
