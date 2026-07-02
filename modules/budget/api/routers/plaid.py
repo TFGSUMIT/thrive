@@ -172,24 +172,65 @@ def _resolve_payee(raw_name: str, db) -> Optional[int]:
     return row["payee_id"] if row else None
 
 
-def _find_match(account_id: int, amount_cents: int, date: str, db) -> Optional[int]:
+def _absorb_or_skip(db, used_ids: set, account_id: int, amount_cents: int,
+                    date: str, plaid_id: Optional[str]) -> tuple:
     """
-    Find an existing cleared/reconciled transaction that matches on
-    account, amount, and date — not already Unverified and not already
-    linked to an import.
+    Overlap-safe import dedup (#13). Decide what to do with an incoming row:
+      ('skip',   id)   — this exact plaid_id is already recorded
+      ('absorb', id)   — an existing row already records this real-world
+                         transaction; stamp it instead of inserting a duplicate
+      ('p2p',    id)   — a pending row this posted row supersedes (update in place)
+      ('insert', None) — genuinely new
+
+    Multiset-aware: each existing row absorbs at most ONE incoming row per batch
+    (tracked in used_ids), so N identical same-day transactions import exactly
+    N-existing times — nothing duplicated, nothing dropped. The old approach
+    (link via matched_transaction_id, insert anyway) regenerated duplicates on
+    every sync because the link lived only on the new row.
     """
+    if plaid_id:
+        row = db.execute("SELECT id FROM transactions WHERE plaid_id = ?",
+                         (plaid_id,)).fetchone()
+        if row:
+            used_ids.add(row["id"])
+            return ("skip", row["id"])
+
+    ph = ",".join("?" * len(used_ids)) if used_ids else "-1"
+    # Exact fingerprint (account + amount + date). When the incoming row carries
+    # a plaid_id, only rows WITHOUT one can absorb it — an existing row with a
+    # DIFFERENT plaid_id is a distinct bank transaction (e.g. four identical
+    # same-day -$100 transfers), never a duplicate.
+    pid_guard = "AND plaid_id IS NULL" if plaid_id else ""
     row = db.execute(
-        """SELECT id FROM transactions
-           WHERE account_id = ?
-             AND amount_cents = ?
-             AND date = ?
-             AND (cleared IS NULL OR cleared != 'Unverified')
-             AND matched_transaction_id IS NULL
-             AND plaid_id IS NULL
-           LIMIT 1""",
-        (account_id, amount_cents, date)
+        f"""SELECT id FROM transactions
+            WHERE account_id = ? AND amount_cents = ? AND date = ?
+              {pid_guard}
+              AND id NOT IN ({ph})
+            ORDER BY id LIMIT 1""",
+        (account_id, amount_cents, date, *used_ids)
     ).fetchone()
-    return row["id"] if row else None
+    if row:
+        used_ids.add(row["id"])
+        return ("absorb", row["id"])
+
+    # Pending→posted: the pending import (different plaid_id, auth date) becomes
+    # the posted transaction a few days later. Absorb into the still-Unverified
+    # import-born row within ±3 days rather than inserting a second copy.
+    if plaid_id:
+        row = db.execute(
+            f"""SELECT id FROM transactions
+                WHERE account_id = ? AND amount_cents = ?
+                  AND cleared = 'Unverified' AND plaid_id IS NOT NULL
+                  AND date BETWEEN date(?, '-3 days') AND date(?, '+3 days')
+                  AND id NOT IN ({ph})
+                ORDER BY id LIMIT 1""",
+            (account_id, amount_cents, date, date, *used_ids)
+        ).fetchone()
+        if row:
+            used_ids.add(row["id"])
+            return ("p2p", row["id"])
+
+    return ("insert", None)
 
 
 # ---------------------------------------------------------------------------
@@ -314,33 +355,57 @@ class PlaidImportRow(BaseModel):
 def import_transactions(rows: list[PlaidImportRow], db=Depends(get_db)):
     """
     Commit reviewed Plaid rows to the DB as Unverified transactions.
-    Runs payee alias lookup and match detection per row.
+
+    Overlap-safe (#13): rows whose real-world transaction is already recorded
+    (manual entry, earlier CSV/Plaid import, or a pending row that has now
+    posted) ABSORB into the existing row — stamping it with plaid_id /
+    import_description so future syncs dedup on plaid_id — instead of
+    inserting a linked duplicate that regenerates every sync.
     """
     inserted = 0
     skipped  = 0
+    absorbed = 0
+    used_ids: set = set()   # existing rows consumed this batch (multiset dedup)
 
     for row in rows:
-        # Dedup on plaid_id
-        if row.plaid_id:
-            exists = db.execute(
-                "SELECT id FROM transactions WHERE plaid_id = ?",
-                (row.plaid_id,)
-            ).fetchone()
-            if exists:
-                skipped += 1
-                continue
-
         amount_cents = to_cents(row.amount)
-
-        # Payee alias lookup
-        payee_id = _resolve_payee(row.description, db) if row.description else None
-
-        # Match detection
-        matched_id = row.matched_transaction_id or _find_match(
-            row.account_id, amount_cents, row.date, db
+        action, existing_id = _absorb_or_skip(
+            db, used_ids, row.account_id, amount_cents, row.date, row.plaid_id
         )
 
-        db.execute(
+        if action == "skip":
+            skipped += 1
+            continue
+
+        if action == "absorb":
+            # The existing row (manual twin or earlier import) IS this
+            # transaction — enrich it rather than duplicating it.
+            db.execute(
+                """UPDATE transactions
+                   SET plaid_id           = COALESCE(plaid_id, ?),
+                       import_description = COALESCE(import_description, ?)
+                   WHERE id = ?""",
+                (row.plaid_id, row.description, existing_id)
+            )
+            absorbed += 1
+            continue
+
+        if action == "p2p":
+            # Pending row became this posted transaction: move it to the posted
+            # date and durable plaid_id (the pending id dies with the pending).
+            db.execute(
+                """UPDATE transactions
+                   SET date = ?, plaid_id = ?,
+                       import_description = COALESCE(import_description, ?)
+                   WHERE id = ?""",
+                (row.date, row.plaid_id, row.description, existing_id)
+            )
+            absorbed += 1
+            continue
+
+        # Genuinely new — insert as Unverified for the review workflow.
+        payee_id = _resolve_payee(row.description, db) if row.description else None
+        cur = db.execute(
             """INSERT INTO transactions
                (account_id, payee_id, category_id, amount_cents, date, memo,
                 cleared, matched_transaction_id, import_description, plaid_id)
@@ -351,15 +416,18 @@ def import_transactions(rows: list[PlaidImportRow], db=Depends(get_db)):
                 amount_cents,
                 row.date,
                 row.memo,
-                matched_id,
+                row.matched_transaction_id,
                 row.description,
                 row.plaid_id,
             )
         )
+        used_ids.add(cur.lastrowid)   # freshly-inserted rows are "taken" too —
+                                      # else a 2nd identical no-plaid_id incoming
+                                      # row would absorb into this one and vanish
         inserted += 1
 
     db.commit()
-    return {"inserted": inserted, "skipped": skipped}
+    return {"inserted": inserted, "skipped": skipped, "absorbed": absorbed}
 
 
 @router.post("/sync")

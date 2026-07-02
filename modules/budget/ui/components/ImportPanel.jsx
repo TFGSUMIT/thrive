@@ -8,6 +8,15 @@ import { api } from '@trunk/api'
 import { FIELD_META, FIELDS } from '../utils/constants'
 import { parseCSV, matchRows, plaidRowsToCsv } from '../utils/csv'
 
+// Import result → human summary. Overlap-safe imports (#13) can absorb rows
+// into existing transactions or skip exact re-imports — say so.
+function importSummary(res) {
+    const bits = [`Imported ${res.inserted} transaction${res.inserted === 1 ? '' : 's'}`]
+    if (res.absorbed) bits.push(`${res.absorbed} matched existing`)
+    if (res.skipped)  bits.push(`${res.skipped} already imported`)
+    return bits.join(' · ')
+}
+
 export default function ImportPanel({
     accounts, defaultAccountId, preloadedRows,
     onCancel, onImported, showToast,
@@ -124,7 +133,7 @@ export default function ImportPanel({
             }))
             try {
                 const res = await api.post('/plaid/import', payload)
-                showToast(`Imported ${res.inserted} transactions`, 'success')
+                showToast(importSummary(res), 'success')
                 onImported?.()
             } catch (e) {
                 showToast(e.message, 'error')
@@ -141,7 +150,7 @@ export default function ImportPanel({
             }))
             try {
                 const res = await api.post('/transactions/import', payload)
-                showToast(`Imported ${res.inserted} transactions`, 'success')
+                showToast(importSummary(res), 'success')
                 onImported?.()
             } catch (e) {
                 showToast(e.message, 'error')

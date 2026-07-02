@@ -416,20 +416,54 @@ def add_transaction(body: TransactionIn, request: Request, db=Depends(get_db)):
 
 @router.post("/import", status_code=201)
 def bulk_import(rows: List[ImportRow], request: Request, db=Depends(get_db)):
+    """
+    Bulk import (CSV / PDF-statement rows) as Unverified transactions.
+
+    Overlap-safe (#13): a row whose (account, amount, date) already exists —
+    a manual entry, an earlier import, or a Plaid-synced twin — ABSORBS into
+    that row (stamping import_description/import_category if empty) instead of
+    inserting a duplicate. Multiset-aware via used_ids: each existing row
+    absorbs at most one incoming row, so N identical same-day transactions
+    import exactly N-existing times. (Same rules as plaid.py's _absorb_or_skip,
+    minus plaid_id — router files are self-contained by convention.)
+    """
     _assert_accounts_visible(db, request, *[r.account_id for r in rows])
     inserted = []
+    absorbed = 0
+    used_ids: set = set()
     for row in rows:
+        amount_cents = to_cents(row.amount)
+        ph = ",".join("?" * len(used_ids)) if used_ids else "-1"
+        existing = db.execute(
+            f"""SELECT id FROM transactions
+                WHERE account_id = ? AND amount_cents = ? AND date = ?
+                  AND id NOT IN ({ph})
+                ORDER BY id LIMIT 1""",
+            (row.account_id, amount_cents, row.date, *used_ids)
+        ).fetchone()
+        if existing:
+            used_ids.add(existing["id"])
+            db.execute(
+                """UPDATE transactions
+                   SET import_description = COALESCE(import_description, ?),
+                       import_category    = COALESCE(import_category, ?)
+                   WHERE id = ?""",
+                (row.import_description, row.import_category, existing["id"])
+            )
+            absorbed += 1
+            continue
         cur = db.execute(
             """INSERT INTO transactions
                (account_id, payee_id, category_id, amount_cents, date, memo,
                 cleared, matched_transaction_id, import_description, import_category)
                VALUES (?, NULL, NULL, ?, ?, ?, 'Unverified', ?, ?, ?)""",
-            (row.account_id, to_cents(row.amount), row.date, row.memo,
+            (row.account_id, amount_cents, row.date, row.memo,
              row.matched_transaction_id, row.import_description, row.import_category)
         )
         inserted.append(cur.lastrowid)
+        used_ids.add(cur.lastrowid)   # a freshly-inserted row is also "taken"
     db.commit()
-    return {"inserted": len(inserted), "ids": inserted}
+    return {"inserted": len(inserted), "ids": inserted, "absorbed": absorbed}
 
 
 @router.post("/{transaction_id}/verify", status_code=200)
