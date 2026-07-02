@@ -323,7 +323,7 @@ function ModulesSection() {
 }
 
 // ── Change my password (#9) — self-service for any account-backed identity ────
-function ChangePasswordSection() {
+function ChangePasswordSection({ embedded = false }) {
   const [cur,  setCur]  = useState('')
   const [pw,   setPw]   = useState('')
   const [pw2,  setPw2]  = useState('')
@@ -344,23 +344,26 @@ function ChangePasswordSection() {
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
 
-  return (
-    <CollapsibleCard title="Change password" defaultOpen={false}>
-      <div style={{ ...body, display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 360 }}>
-        <div style={lbl}>Current password</div>
-        <PasswordInput style={inp} placeholder="Current password" value={cur} autoComplete="current-password"
-          onChange={e => { setCur(e.target.value); setOk(false) }} />
-        <div style={{ ...lbl, marginTop: 4 }}>New password (min {PASSWORD_MIN})</div>
-        <PasswordInput style={inp} placeholder={`New password (min ${PASSWORD_MIN})`} value={pw} autoComplete="new-password"
-          onChange={e => { setPw(e.target.value); setOk(false) }} />
-        <PasswordInput style={inp} placeholder="Repeat new password" value={pw2} autoComplete="new-password"
-          onChange={e => { setPw2(e.target.value); setOk(false) }} />
-        {err && <div style={{ fontSize: 12, color: 'var(--color-danger,#ef4444)' }}>{err}</div>}
-        {ok  && <div style={{ fontSize: 12, color: 'var(--color-success,#22c55e)' }}>Password updated — other devices were signed out.</div>}
-        <div><button style={{ ...btnP, marginTop: 4, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={submit}>Update password</button></div>
-      </div>
-    </CollapsibleCard>
+  const form = (
+    <div style={{ ...body, display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 360 }}>
+      <div style={lbl}>Current password</div>
+      <PasswordInput style={inp} placeholder="Current password" value={cur} autoComplete="current-password"
+        onChange={e => { setCur(e.target.value); setOk(false) }} />
+      <div style={{ ...lbl, marginTop: 4 }}>New password (min {PASSWORD_MIN})</div>
+      <PasswordInput style={inp} placeholder={`New password (min ${PASSWORD_MIN})`} value={pw} autoComplete="new-password"
+        onChange={e => { setPw(e.target.value); setOk(false) }} />
+      <PasswordInput style={inp} placeholder="Repeat new password" value={pw2} autoComplete="new-password"
+        onChange={e => { setPw2(e.target.value); setOk(false) }} />
+      {err && <div style={{ fontSize: 12, color: 'var(--color-danger,#ef4444)' }}>{err}</div>}
+      {ok  && <div style={{ fontSize: 12, color: 'var(--color-success,#22c55e)' }}>Password updated — other devices were signed out.</div>}
+      <div><button style={{ ...btnP, marginTop: 4, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={submit}>Update password</button></div>
+    </div>
   )
+  // `embedded` renders as a subsection (inside the Accounts card for admins);
+  // otherwise it's its own card (members, who have no Accounts card).
+  return embedded
+    ? <><SubHead>Change my password</SubHead>{form}</>
+    : <CollapsibleCard title="Change password" defaultOpen={false}>{form}</CollapsibleCard>
 }
 
 function AccountsSection() {
@@ -472,7 +475,7 @@ function AccountsSection() {
                 <button style={{ ...btnS, padding: '3px 9px', fontSize: 10, opacity: locked ? 0.4 : 1, cursor: locked ? 'not-allowed' : 'pointer' }}
                   disabled={locked} title={isHead ? "Can't disable the Head of Household" : (isLastAdmin ? "Can't disable the last admin" : '')}
                   onClick={() => toggleDisable(a.id, !a.disabled)}>{a.disabled ? 'Enable' : 'Disable'}</button>
-                <button style={{ ...btnS, padding: '3px 9px', fontSize: 10 }} onClick={() => setRow(a.id, { resetting: !ui.resetting })}>Reset pw</button>
+                <button style={{ ...btnS, padding: '3px 9px', fontSize: 10 }} onClick={() => setRow(a.id, { resetting: !ui.resetting })}>Change pw</button>
                 {!isHead && (ui.confirmDelete
                   ? <><button style={{ ...btnS, padding: '3px 9px', fontSize: 10, color: 'var(--color-danger,#ef4444)', borderColor: 'var(--color-danger,#ef4444)' }} onClick={() => doDelete(a.id)}>Confirm</button><button style={{ ...btnS, padding: '3px 9px', fontSize: 10 }} onClick={() => setRow(a.id, { confirmDelete: false })}>No</button></>
                   : <button style={{ ...btnS, padding: '3px 9px', fontSize: 10, color: 'var(--color-danger,#ef4444)', borderColor: 'transparent' }} onClick={() => setRow(a.id, { confirmDelete: true })}>Delete</button>)}
@@ -489,6 +492,9 @@ function AccountsSection() {
           </div>
         )
       })}
+
+      {/* Self-service password change for the signed-in admin, folded into Accounts */}
+      {user?.id && <ChangePasswordSection embedded />}
     </CollapsibleCard>
   )
 }
@@ -846,9 +852,10 @@ export default function SettingsPage() {
         </CollapsibleCard>
       )}
 
-      {/* Self-service password change — any account-backed identity (not the
-          shared Household or a passwordless profile, which have no password). */}
-      {user?.id && <ChangePasswordSection />}
+      {/* Self-service password change. Members get it as its own card; admins get
+          it folded into the Accounts card below (so all password mgmt is together).
+          Not shown for the shared Household / passwordless profiles (no password). */}
+      {user?.id && user.role !== 'admin' && <ChangePasswordSection />}
 
       {user?.role === 'admin' && <AccountsSection />}
 
