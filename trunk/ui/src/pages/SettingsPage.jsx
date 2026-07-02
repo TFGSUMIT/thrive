@@ -24,7 +24,7 @@ const lbl  = { fontSize: 10, color: 'var(--text-tertiary,#666)', marginBottom: 4
 function Badge({ kind }) {
   const map = { admin: { bg: 'var(--accent-muted)', c: 'var(--accent)' }, member: { bg: 'var(--info-muted)', c: 'var(--color-info)' }, disabled: { bg: 'var(--danger-muted)', c: 'var(--color-danger)' } }
   const s = map[kind] || map.member
-  return <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 4, background: s.bg, color: s.c, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{kind}</span>
+  return <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 4, background: s.bg, color: s.c, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{kind}</span>
 }
 
 // iOS-style toggle switch + a small labelled wrapper
@@ -483,14 +483,16 @@ function AccountsSection() {
         const locked = isLastAdmin || isHead   // can't demote/disable the last admin or the Head
         return (
           <div key={a.id} style={{ padding: '12px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--border-color,#2a2a2a)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                {isSelf && <span title="signed in" style={{ marginRight: 4 }}>🔑</span>}
-                <span style={{ fontSize: 13, fontWeight: 500, marginRight: 8 }}>{a.username}</span>
-                <Badge kind={a.role} />
-                {isHead && <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, background: 'var(--accent-muted)', color: 'var(--accent)', marginLeft: 6, letterSpacing: '0.04em', textTransform: 'uppercase', fontWeight: 600 }}>👑 Head of Household</span>}
-                {a.disabled ? <> <Badge kind="disabled" /></> : null}
-                {isSelf && <span style={{ fontSize: 10, color: 'var(--text-tertiary,#666)', marginLeft: 6 }}>(you)</span>}
+                {/* name + tags flow on one line, wrapping whole tags to a 2nd line
+                    only when they don't fit (each tag is nowrap so none splits). */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, rowGap: 4 }}>
+                  {isSelf && <span title="signed in">🔑</span>}
+                  <span style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap' }}>{a.username}</span>
+                  <Badge kind={a.role} />
+                  {isHead && <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, background: 'var(--accent-muted)', color: 'var(--accent)', letterSpacing: '0.04em', textTransform: 'uppercase', fontWeight: 600, whiteSpace: 'nowrap' }}>👑 Head of Household</span>}
+                  {a.disabled && <Badge kind="disabled" />}
+                  {isSelf && <span style={{ fontSize: 10, color: 'var(--text-tertiary,#666)', whiteSpace: 'nowrap' }}>(you)</span>}
+                </div>
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary,#888)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span>logs in as</span>
                   <select style={{ ...inp, width: 'auto', padding: '3px 6px', fontSize: 11 }} value={a.user_id || ''} onChange={e => linkUser(a.id, e.target.value)}>
@@ -498,8 +500,7 @@ function AccountsSection() {
                     {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
-              </div>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 10 }}>
                 {isSelf && <button style={{ ...btnS, padding: '3px 9px', fontSize: 10 }} onClick={logout}>Sign out</button>}
                 {!isHead && !a.disabled && <button style={{ ...btnS, padding: '3px 9px', fontSize: 10 }} title="Make this the household's primary login (Head of Household)" onClick={() => makeHead(a.id)}>Make Head</button>}
                 <button style={{ ...btnS, padding: '3px 9px', fontSize: 10, opacity: locked ? 0.4 : 1, cursor: locked ? 'not-allowed' : 'pointer' }}
@@ -514,7 +515,6 @@ function AccountsSection() {
                   ? <><button style={{ ...btnS, padding: '3px 9px', fontSize: 10, color: 'var(--color-danger,#ef4444)', borderColor: 'var(--color-danger,#ef4444)' }} onClick={() => doDelete(a.id)}>Confirm</button><button style={{ ...btnS, padding: '3px 9px', fontSize: 10 }} onClick={() => setRow(a.id, { confirmDelete: false })}>No</button></>
                   : <button style={{ ...btnS, padding: '3px 9px', fontSize: 10, color: 'var(--color-danger,#ef4444)', borderColor: 'transparent' }} onClick={() => setRow(a.id, { confirmDelete: true })}>Delete</button>)}
               </div>
-            </div>
             {ui.resetting && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10, maxWidth: 360,
                 padding: 12, background: 'var(--bg-tertiary,#1c1c1c)', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 8 }}>
