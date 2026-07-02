@@ -17,19 +17,40 @@ function importSummary(res) {
     return bits.join(' · ')
 }
 
+const fmtAmt = (n) => `${n < 0 ? '-' : ''}$${Math.abs(Number(n)).toFixed(2)}`
+
 // PDF statement parsing (#84): the backend extracts the PDF's text layer
 // (/statements/text), then each page goes to the LOCAL model via the lmstudio
 // module's generic /extract with this budget-domain prompt. Cross-module tie
 // lives here in the frontend per convention (like MPG → /lmstudio/vision), so
 // neither backend knows about the other.
-const STATEMENT_PROMPT = `You are parsing one page of a bank statement. Extract EVERY transaction row visible in the text into a JSON array. Each element: {"date":"YYYY-MM-DD","description":"...","amount":-12.34}
+const STATEMENT_PROMPT = `You are parsing one page of a bank statement. Extract EVERY transaction row visible in the text into a JSON array. Each element: {"account":"...","date":"YYYY-MM-DD","description":"...","amount":-12.34}
 Rules:
+- account: the account this transaction belongs to. A combined statement lists MULTIPLE accounts under section headers (e.g. "Joint Checking", "Savings", "Account ending 0887"). Set account to that section's label INCLUDING its account number or last-4 digits exactly as printed (e.g. "Joint Checking 0887"). If this page is a continuation with no account header visible, set account to null.
 - amount: negative for money OUT (withdrawals, purchases, payments, transfers out, fees), positive for money IN (deposits, credits, interest, refunds).
 - Use the transaction/posted date. If the year is missing, infer it from the statement period shown on the page.
 - description: the merchant/payee text as printed, cleaned of extra whitespace.
 - Skip running-balance columns, daily balance summaries, section headers, subtotals/totals, and anything that is not an individual transaction.
 - If the page has no transactions, return [].
 Return ONLY the JSON array, no other text.`
+
+// Auto-map a detected statement account ("Joint Checking 0887") to a thrive
+// budget account. Last-4 digits are the disambiguator (there are several
+// "Checking"/"Savings" accounts), with a name-token fallback.
+function suggestAccountId(label, accounts) {
+    if (!label) return ''
+    const digits = (String(label).match(/\d{4,}/g) || []).map(d => d.slice(-4))
+    for (const a of accounts) {
+        if (a.number && digits.includes(String(a.number).slice(-4))) return String(a.id)
+    }
+    // name-token fallback: every significant word of an account name appears in the label
+    const lab = String(label).toLowerCase()
+    for (const a of accounts) {
+        const toks = String(a.name).toLowerCase().split(/\s+/).filter(t => t.length > 2)
+        if (toks.length && toks.every(t => lab.includes(t))) return String(a.id)
+    }
+    return ''
+}
 
 export default function ImportPanel({
     accounts, defaultAccountId, preloadedRows,
@@ -46,7 +67,9 @@ export default function ImportPanel({
     const [memoExtra, setMemoExtra] = useState([])
     const [armed, setArmed] = useState(null)
     const [pdfBusy, setPdfBusy] = useState(null)   // progress line while parsing a statement
-    const [pdfInfo, setPdfInfo] = useState(null)   // { name, pages, count } once parsed
+    const [pdfInfo, setPdfInfo] = useState(null)   // { name, pages, count, skipped } once parsed
+    const [pdfGroups, setPdfGroups] = useState(null)  // [{label, rows, accountId, matchedRows}]
+    const [pdfImporting, setPdfImporting] = useState(false)
     const dropRef = useRef(null)
 
     const importPreviewLimit = parseInt(localStorage.getItem('importPreviewLimit') || '20')
@@ -76,11 +99,13 @@ export default function ImportPanel({
     }
 
     // PDF statement → text pages (backend) → rows via the local model (#84).
-    // Lands in the same csv/mapping state as a CSV drop, so the existing
-    // preview → match → /transactions/import flow (dedup-safe, #13) just runs.
+    // A combined statement holds MULTIPLE accounts, so each row carries a
+    // detected `account`; we forward-fill it across continuation pages, group by
+    // it, auto-map each group to a thrive account, and let the user confirm —
+    // then each group commits via the dedup-safe /transactions/import (#13).
     async function handlePdf(file) {
         setPdfBusy('Reading PDF…')
-        setPdfInfo(null)
+        setPdfInfo(null); setPdfGroups(null); setCsv(null); setRows(null)
         try {
             const fd = new FormData()
             fd.append('file', file)
@@ -96,7 +121,7 @@ export default function ImportPanel({
             const skipped = doc.pages.length - pages.length
             if (!pages.length) throw new Error('No text layer in this PDF (scanned image?) — not supported yet')
 
-            const all = []
+            const all = []   // ordered {account, date, description, amount}
             for (let i = 0; i < pages.length; i++) {
                 setPdfBusy(`AI parsing page ${i + 1}/${pages.length}…`)
                 let out
@@ -112,21 +137,84 @@ export default function ImportPanel({
                 for (const r of parsed) {
                     const amt = typeof r.amount === 'number' ? r.amount : parseFloat(r.amount)
                     if (!r.date || !isFinite(amt)) continue
-                    all.push({ date: String(r.date), description: String(r.description || '').trim(), amount: String(amt) })
+                    all.push({
+                        account: r.account ? String(r.account).trim() : '',
+                        date: String(r.date), description: String(r.description || '').trim(), amount: amt,
+                    })
                 }
             }
             if (!all.length) throw new Error('The model found no transactions in this statement')
 
-            setCsv({ headers: ['date', 'description', 'amount'], rows: all })
-            setMapping({ date: 'date', payee: 'description', amount: 'amount' })  // auto-mapped
-            setMemoExtra([])
-            setArmed(null)
-            setRows(null)
-            setPdfInfo({ name: file.name, pages: pages.length, count: all.length, skipped })
+            // Forward-fill account across continuation pages (rows are in doc order).
+            let last = ''
+            for (const r of all) { if (r.account) last = r.account; else r.account = last }
+
+            // Group by detected account, preserving first-seen order.
+            const order = []
+            const byAcct = new Map()
+            for (const r of all) {
+                const key = r.account || 'Unknown account'
+                if (!byAcct.has(key)) { byAcct.set(key, []); order.push(key) }
+                byAcct.get(key).push({ date: r.date, description: r.description, amount: r.amount })
+            }
+            const groups = order.map(label => ({
+                label, rows: byAcct.get(label),
+                accountId: suggestAccountId(label, accounts),
+                matchedRows: null,
+            }))
+
+            setPdfGroups(groups)
+            setPdfInfo({ name: file.name, pages: pages.length, count: all.length, accounts: groups.length, skipped })
+            // match any auto-mapped groups up front
+            groups.forEach((g, i) => { if (g.accountId) matchGroup(i, g.accountId) })
         } catch (err) {
             showToast(err.message, 'error')
         } finally {
             setPdfBusy(null)
+        }
+    }
+
+    // (Re)match a PDF group's rows against existing transactions on the chosen
+    // account, so the preview shows new-vs-already-there (reuses CSV matchRows).
+    async function matchGroup(idx, accountId) {
+        // clear stale match state immediately on (re)assignment
+        setPdfGroups(gs => gs.map((g, i) => i === idx ? { ...g, accountId, matchedRows: null } : g))
+        if (!accountId) return
+        try {
+            const existing = await api.get(`/transactions/?account_id=${accountId}&limit=1000`)
+            setPdfGroups(gs => gs.map((g, i) => (i === idx && g.accountId === accountId)
+                ? { ...g, matchedRows: matchRows(g.rows, existing, { date: 'date', amount: 'amount' }) } : g))
+        } catch (e) {
+            showToast('Match failed: ' + e.message, 'error')
+        }
+    }
+
+    async function importPdf() {
+        const mapped = pdfGroups.filter(g => g.accountId)
+        if (!mapped.length) return
+        setPdfImporting(true)
+        const agg = { inserted: 0, absorbed: 0, skipped: 0 }
+        try {
+            for (const g of mapped) {
+                const src = g.matchedRows || g.rows
+                const payload = src.map(r => ({
+                    account_id: parseInt(g.accountId),
+                    date: r.date,
+                    amount: r.amount,
+                    import_description: r.description || null,
+                    matched_transaction_id: r._matchedId || null,
+                }))
+                const res = await api.post('/transactions/import', payload)
+                agg.inserted += res.inserted || 0
+                agg.absorbed += res.absorbed || 0
+                agg.skipped  += res.skipped  || 0
+            }
+            showToast(importSummary(agg), 'success')
+            onImported?.()
+        } catch (e) {
+            showToast(e.message, 'error')
+        } finally {
+            setPdfImporting(false)
         }
     }
 
@@ -233,13 +321,17 @@ export default function ImportPanel({
 
     return (
         <div className="sched-form">
-            <div className="form-row">
-                <label>Account</label>
-                <select className="input" value={importAccountId} onChange={e => { setImportAccountId(e.target.value); setRows(null) }}>
-                    <option value="">— select account —</option>
-                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
-            </div>
+            {/* single-account selector — for CSV/Plaid. A PDF statement carries
+                its own per-account sections, so it's hidden in that mode. */}
+            {!pdfGroups && (
+                <div className="form-row">
+                    <label>Account</label>
+                    <select className="input" value={importAccountId} onChange={e => { setImportAccountId(e.target.value); setRows(null) }}>
+                        <option value="">— select account —</option>
+                        {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                </div>
+            )}
 
             {isPlaid && csv && (
                 <div className="import-plaid-badge">
@@ -247,14 +339,7 @@ export default function ImportPanel({
                 </div>
             )}
 
-            {pdfInfo && csv && (
-                <div className="import-plaid-badge">
-                    📄 {pdfInfo.name} — {pdfInfo.count} transactions parsed from {pdfInfo.pages} page{pdfInfo.pages === 1 ? '' : 's'}
-                    {pdfInfo.skipped > 0 && ` (${pdfInfo.skipped} page${pdfInfo.skipped === 1 ? '' : 's'} had no text)`}
-                </div>
-            )}
-
-            {importAccountId && !csv && (
+            {!csv && !pdfGroups && !isPlaid && (
                 <div
                     ref={dropRef}
                     className={`import-drop-zone ${dragging ? 'import-drop-zone--active' : ''}`}
@@ -262,8 +347,59 @@ export default function ImportPanel({
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
                 >
-                    {pdfBusy || 'Drop CSV or PDF statement here'}
+                    {pdfBusy || 'Drop a CSV, or a PDF statement to read with local AI'}
                 </div>
+            )}
+
+            {/* PDF statement → one section per detected account, each mapped to a
+                thrive account (auto-matched on last-4) and previewed. */}
+            {pdfGroups && (
+                <>
+                    <div className="import-plaid-badge">
+                        📄 {pdfInfo.name} — {pdfInfo.count} transactions · {pdfGroups.length} account{pdfGroups.length === 1 ? '' : 's'} detected
+                        {pdfInfo.skipped > 0 && ` · ${pdfInfo.skipped} page${pdfInfo.skipped === 1 ? '' : 's'} had no text`}
+                        <button className="btn btn-ghost" style={{ marginLeft: 'auto' }}
+                            onClick={() => { setPdfGroups(null); setPdfInfo(null) }}>✕ Clear</button>
+                    </div>
+                    {pdfGroups.map((g, idx) => {
+                        const src = g.matchedRows || g.rows
+                        const nNew = g.matchedRows ? g.matchedRows.filter(r => !r.matched).length : null
+                        const nMat = g.matchedRows ? g.matchedRows.filter(r => r.matched).length : null
+                        return (
+                            <div key={g.label} style={{ border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 8, marginTop: 10, overflow: 'hidden' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 12px', background: 'var(--bg-tertiary,#1e1e1e)' }}>
+                                    <span style={{ fontWeight: 600, fontSize: 13 }}>{g.label}</span>
+                                    <span className="muted" style={{ fontSize: 11 }}>{g.rows.length} txn{g.rows.length === 1 ? '' : 's'}</span>
+                                    <span className="muted">→</span>
+                                    <select className="input" style={{ width: 'auto' }} value={g.accountId}
+                                        onChange={e => matchGroup(idx, e.target.value)}>
+                                        <option value="">— skip this account —</option>
+                                        {accounts.map(a => <option key={a.id} value={a.id}>{a.name}{a.number ? ` ·${String(a.number).slice(-4)}` : ''}</option>)}
+                                    </select>
+                                    {g.matchedRows && (
+                                        <span style={{ fontSize: 11 }}>
+                                            <span className="import-tag import-tag--new">{nNew} new</span>{' '}
+                                            <span className="import-tag import-tag--matched">{nMat} matched</span>
+                                        </span>
+                                    )}
+                                </div>
+                                {g.accountId && (
+                                    <div className="import-table" style={{ maxHeight: 7 * 32 }}>
+                                        {src.slice(0, 6).map((r, i) => (
+                                            <div key={i} className={`import-csv-row ${r.matched ? 'import-row--matched' : ''}`}>
+                                                {g.matchedRows && <span className={`import-status ${r.matched ? 'import-status--matched' : 'import-status--new'}`}>{r.matched ? '=' : '+'}</span>}
+                                                <span className="import-csv-cell" style={{ whiteSpace: 'nowrap' }}>{r.date}</span>
+                                                <span className="import-csv-cell" style={{ flex: 3, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.description}</span>
+                                                <span className="import-csv-cell" style={{ textAlign: 'right', whiteSpace: 'nowrap', color: r.amount < 0 ? 'inherit' : 'var(--color-success,#22c55e)' }}>{fmtAmt(r.amount)}</span>
+                                            </div>
+                                        ))}
+                                        {src.length > 6 && <div className="muted" style={{ padding: '6px 12px', fontSize: 12 }}>+{src.length - 6} more</div>}
+                                    </div>
+                                )}
+                            </div>
+                        )
+                    })}
+                </>
             )}
 
             {csv && (
@@ -374,6 +510,15 @@ export default function ImportPanel({
                 {!requiredMapped && csv && (
                     <span className="muted" style={{ fontSize: '12px' }}>Map all required fields to enable import</span>
                 )}
+                {pdfGroups && (() => {
+                    const mapped = pdfGroups.filter(g => g.accountId)
+                    const total = mapped.reduce((n, g) => n + g.rows.length, 0)
+                    return (
+                        <button className="btn btn-primary" disabled={pdfImporting || !mapped.length} onClick={importPdf}>
+                            {pdfImporting ? 'Importing…' : `Import ${total} into ${mapped.length} account${mapped.length === 1 ? '' : 's'}`}
+                        </button>
+                    )
+                })()}
                 <button className="btn" onClick={onCancel}>Cancel</button>
             </div>
         </div>
