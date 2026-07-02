@@ -19,6 +19,15 @@ function importSummary(res) {
 
 const fmtAmt = (n) => `${n < 0 ? '-' : ''}$${Math.abs(Number(n)).toFixed(2)}`
 
+// Columns for a PDF group's preview table — mirrors the CSV/Plaid import table
+// (same field colours) so the two views read the same. PDF rows are already
+// structured, so these are fixed (no column-mapping bubbles needed).
+const PDF_COLS = [
+    { key: 'date', meta: FIELD_META.date, cell: r => r.date },
+    { key: 'description', meta: FIELD_META.payee, cell: r => r.description },
+    { key: 'amount', meta: FIELD_META.amount, cell: r => fmtAmt(r.amount), align: 'right' },
+]
+
 // PDF statement parsing (#84): the backend extracts the PDF's text layer
 // (/statements/text), then each page goes to the LOCAL model via the lmstudio
 // module's generic /extract with this budget-domain prompt. Cross-module tie
@@ -385,17 +394,32 @@ export default function ImportPanel({
                                     )}
                                 </div>
                                 {g.accountId && (
-                                    <div className="import-table" style={{ maxHeight: 7 * 32 }}>
-                                        {src.slice(0, 6).map((r, i) => (
-                                            <div key={i} className={`import-csv-row ${r.matched ? 'import-row--matched' : ''}`}>
-                                                {g.matchedRows && <span className={`import-status ${r.matched ? 'import-status--matched' : 'import-status--new'}`}>{r.matched ? '=' : '+'}</span>}
-                                                <span className="import-csv-cell" style={{ whiteSpace: 'nowrap' }}>{r.date}</span>
-                                                <span className="import-csv-cell" style={{ flex: 3, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.description}</span>
-                                                <span className="import-csv-cell" style={{ textAlign: 'right', whiteSpace: 'nowrap', color: r.amount < 0 ? 'inherit' : 'var(--color-success,#22c55e)' }}>{fmtAmt(r.amount)}</span>
+                                    <>
+                                        <div className="import-table" style={{ maxHeight: `${importPreviewLimit * 34}px` }}>
+                                            <div className="import-csv-header">
+                                                <span className="import-status"></span>
+                                                {PDF_COLS.map(c => (
+                                                    <span key={c.key} className="import-col-header" style={{ color: c.meta.color }}>
+                                                        {c.key}
+                                                        <span className="import-col-tag" style={{ background: c.meta.color }}>{c.meta.label}</span>
+                                                    </span>
+                                                ))}
                                             </div>
-                                        ))}
-                                        {src.length > 6 && <div className="muted" style={{ padding: '6px 12px', fontSize: 12 }}>+{src.length - 6} more</div>}
-                                    </div>
+                                            {src.slice(0, importPreviewLimit).map((r, i) => (
+                                                <div key={i} className={`import-csv-row ${r.matched ? 'import-row--matched' : ''}`}>
+                                                    <span className={`import-status ${r.matched ? 'import-status--matched' : 'import-status--new'}`}>{r.matched ? '=' : '+'}</span>
+                                                    {PDF_COLS.map(c => (
+                                                        <span key={c.key} className="import-csv-cell" style={{ color: c.meta.color, textAlign: c.align || 'left' }}>{c.cell(r)}</span>
+                                                    ))}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        {src.length > importPreviewLimit && (
+                                            <div className="muted" style={{ padding: '6px 12px', fontSize: 12 }}>
+                                                Showing {importPreviewLimit} of {src.length} rows
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         )
