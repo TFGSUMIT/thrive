@@ -323,7 +323,7 @@ function ModulesSection() {
 }
 
 // ── Change my password (#9) — self-service for any account-backed identity ────
-function ChangePasswordSection({ embedded = false }) {
+function ChangePasswordSection() {
   const [cur,  setCur]  = useState('')
   const [pw,   setPw]   = useState('')
   const [pw2,  setPw2]  = useState('')
@@ -359,11 +359,9 @@ function ChangePasswordSection({ embedded = false }) {
       <div><button style={{ ...btnP, marginTop: 4, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={submit}>Update password</button></div>
     </div>
   )
-  // `embedded` renders as a subsection (inside the Accounts card for admins);
-  // otherwise it's its own card (members, who have no Accounts card).
-  return embedded
-    ? <><SubHead>Change my password</SubHead>{form}</>
-    : <CollapsibleCard title="Change password" defaultOpen={false}>{form}</CollapsibleCard>
+  // Members (who have no Accounts card) change their password from this card;
+  // admins do it from the per-account "Change pw" dropdown in the Accounts card.
+  return <CollapsibleCard title="Change password" defaultOpen={false}>{form}</CollapsibleCard>
 }
 
 function AccountsSection() {
@@ -475,26 +473,27 @@ function AccountsSection() {
                 <button style={{ ...btnS, padding: '3px 9px', fontSize: 10, opacity: locked ? 0.4 : 1, cursor: locked ? 'not-allowed' : 'pointer' }}
                   disabled={locked} title={isHead ? "Can't disable the Head of Household" : (isLastAdmin ? "Can't disable the last admin" : '')}
                   onClick={() => toggleDisable(a.id, !a.disabled)}>{a.disabled ? 'Enable' : 'Disable'}</button>
-                <button style={{ ...btnS, padding: '3px 9px', fontSize: 10 }} onClick={() => setRow(a.id, { resetting: !ui.resetting })}>Change pw</button>
+                <button style={{ ...btnS, padding: '3px 9px', fontSize: 10 }} onClick={() => setRow(a.id, { resetting: !ui.resetting })}>Change pw {ui.resetting ? '▾' : '▸'}</button>
                 {!isHead && (ui.confirmDelete
                   ? <><button style={{ ...btnS, padding: '3px 9px', fontSize: 10, color: 'var(--color-danger,#ef4444)', borderColor: 'var(--color-danger,#ef4444)' }} onClick={() => doDelete(a.id)}>Confirm</button><button style={{ ...btnS, padding: '3px 9px', fontSize: 10 }} onClick={() => setRow(a.id, { confirmDelete: false })}>No</button></>
                   : <button style={{ ...btnS, padding: '3px 9px', fontSize: 10, color: 'var(--color-danger,#ef4444)', borderColor: 'transparent' }} onClick={() => setRow(a.id, { confirmDelete: true })}>Delete</button>)}
               </div>
             </div>
             {ui.resetting && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                <PasswordInput wrapStyle={{ flex: '1 1 160px' }} style={inp} placeholder={`New password (min ${PASSWORD_MIN})`} value={resetPw[a.id] || ''} onChange={e => setResetPw(p => ({ ...p, [a.id]: e.target.value }))} autoComplete="new-password" />
-                <PasswordInput wrapStyle={{ flex: '1 1 160px' }} style={inp} placeholder="Repeat new password" value={resetPw2[a.id] || ''} onChange={e => setResetPw2(p => ({ ...p, [a.id]: e.target.value }))} autoComplete="new-password" />
-                <button style={{ ...btnP, padding: '7px 12px' }} onClick={() => doReset(a.id)}>Set</button>
-                <button style={btnS} onClick={() => setRow(a.id, { resetting: false })}>Cancel</button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10, maxWidth: 360,
+                padding: 12, background: 'var(--bg-tertiary,#1c1c1c)', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 8 }}>
+                <div style={lbl}>New password (min {PASSWORD_MIN})</div>
+                <PasswordInput style={inp} placeholder={`New password (min ${PASSWORD_MIN})`} value={resetPw[a.id] || ''} onChange={e => setResetPw(p => ({ ...p, [a.id]: e.target.value }))} autoComplete="new-password" />
+                <PasswordInput style={inp} placeholder="Repeat new password" value={resetPw2[a.id] || ''} onChange={e => setResetPw2(p => ({ ...p, [a.id]: e.target.value }))} autoComplete="new-password" />
+                <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+                  <button style={{ ...btnP, padding: '7px 12px' }} onClick={() => doReset(a.id)}>Set password</button>
+                  <button style={btnS} onClick={() => setRow(a.id, { resetting: false })}>Cancel</button>
+                </div>
               </div>
             )}
           </div>
         )
       })}
-
-      {/* Self-service password change for the signed-in admin, folded into Accounts */}
-      {user?.id && <ChangePasswordSection embedded />}
     </CollapsibleCard>
   )
 }
