@@ -19,6 +19,7 @@ export default function LMStudioPanel() {
   const [online,    setOnline]    = useState(false)
   const [models,    setModels]    = useState([])
   const [visModel,  setVisModel]  = useState('')   // configured default vision model
+  const [extModel,  setExtModel]  = useState('')   // configured text-extraction model (#84)
   const [probing,   setProbing]   = useState(true)
   const [savingUrl, setSavingUrl] = useState(false)
 
@@ -30,6 +31,7 @@ export default function LMStudioPanel() {
       setOnline(!!st.online)
       setModels(Array.isArray(st.models) ? st.models : [])
       setVisModel(st.vision_model || '')
+      setExtModel(st.extract_model || '')
     } catch { setOnline(false); setModels([]) }
     finally { setProbing(false) }
   }, [])
@@ -47,6 +49,12 @@ export default function LMStudioPanel() {
   const saveVisModel = async (id) => {
     setVisModel(id)
     try { await api.post('/lmstudio/config', { key: 'vision_model', value: id }) }
+    catch {}
+  }
+
+  const saveExtModel = async (id) => {
+    setExtModel(id)
+    try { await api.post('/lmstudio/config', { key: 'extract_model', value: id }) }
     catch {}
   }
 
@@ -83,6 +91,22 @@ export default function LMStudioPanel() {
           <select value={visModel} onChange={e => saveVisModel(e.target.value)} style={{ ...inp, fontSize: 12 }}>
             <option value="">— none —</option>
             {visionModels.map(m => <option key={m.id} value={m.id}>{m.id}{m.state === 'loaded' ? ' ●' : ''}</option>)}
+          </select>
+        )}
+      </div>
+
+      {/* default text-extraction model (#84) — used by e.g. budget's PDF
+          statement import via /lmstudio/extract; falls back to the vision model */}
+      <div style={{ marginTop: 16 }}>
+        <label style={lbl}>Default extraction model</label>
+        {models.length === 0 ? (
+          <div style={{ fontSize: 11, color: 'var(--text-tertiary,#888)' }}>
+            {online ? 'No models on the host — load one in LM Studio.' : 'Connect to a host to pick one.'}
+          </div>
+        ) : (
+          <select value={extModel} onChange={e => saveExtModel(e.target.value)} style={{ ...inp, fontSize: 12 }}>
+            <option value="">— use vision model —</option>
+            {models.map(m => <option key={m.id} value={m.id}>{m.id}{m.state === 'loaded' ? ' ●' : ''}</option>)}
           </select>
         )}
       </div>

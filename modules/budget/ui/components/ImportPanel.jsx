@@ -17,6 +17,20 @@ function importSummary(res) {
     return bits.join(' · ')
 }
 
+// PDF statement parsing (#84): the backend extracts the PDF's text layer
+// (/statements/text), then each page goes to the LOCAL model via the lmstudio
+// module's generic /extract with this budget-domain prompt. Cross-module tie
+// lives here in the frontend per convention (like MPG → /lmstudio/vision), so
+// neither backend knows about the other.
+const STATEMENT_PROMPT = `You are parsing one page of a bank statement. Extract EVERY transaction row visible in the text into a JSON array. Each element: {"date":"YYYY-MM-DD","description":"...","amount":-12.34}
+Rules:
+- amount: negative for money OUT (withdrawals, purchases, payments, transfers out, fees), positive for money IN (deposits, credits, interest, refunds).
+- Use the transaction/posted date. If the year is missing, infer it from the statement period shown on the page.
+- description: the merchant/payee text as printed, cleaned of extra whitespace.
+- Skip running-balance columns, daily balance summaries, section headers, subtotals/totals, and anything that is not an individual transaction.
+- If the page has no transactions, return [].
+Return ONLY the JSON array, no other text.`
+
 export default function ImportPanel({
     accounts, defaultAccountId, preloadedRows,
     onCancel, onImported, showToast,
@@ -31,6 +45,8 @@ export default function ImportPanel({
     const [mapping, setMapping] = useState(() => isPlaid ? { date: 'date', payee: 'description', amount: 'amount' } : {})
     const [memoExtra, setMemoExtra] = useState([])
     const [armed, setArmed] = useState(null)
+    const [pdfBusy, setPdfBusy] = useState(null)   // progress line while parsing a statement
+    const [pdfInfo, setPdfInfo] = useState(null)   // { name, pages, count } once parsed
     const dropRef = useRef(null)
 
     const importPreviewLimit = parseInt(localStorage.getItem('importPreviewLimit') || '20')
@@ -42,8 +58,10 @@ export default function ImportPanel({
         e.preventDefault()
         setDragging(false)
         const dropped = e.dataTransfer.files[0]
-        if (!dropped) return
-        if (!dropped.name.endsWith('.csv')) { showToast('CSV files only', 'error'); return }
+        if (!dropped || pdfBusy) return
+        const name = dropped.name.toLowerCase()
+        if (name.endsWith('.pdf')) { handlePdf(dropped); return }
+        if (!name.endsWith('.csv')) { showToast('Drop a CSV or PDF statement', 'error'); return }
         const reader = new FileReader()
         reader.onload = (ev) => {
             const parsed = parseCSV(ev.target.result)
@@ -55,6 +73,61 @@ export default function ImportPanel({
             setRows(null)
         }
         reader.readAsText(dropped)
+    }
+
+    // PDF statement → text pages (backend) → rows via the local model (#84).
+    // Lands in the same csv/mapping state as a CSV drop, so the existing
+    // preview → match → /transactions/import flow (dedup-safe, #13) just runs.
+    async function handlePdf(file) {
+        setPdfBusy('Reading PDF…')
+        setPdfInfo(null)
+        try {
+            const fd = new FormData()
+            fd.append('file', file)
+            // raw fetch: api.js is JSON-only; the browser sets the multipart boundary
+            const up = await fetch('/api/statements/text', { method: 'POST', credentials: 'include', body: fd })
+            if (!up.ok) {
+                let detail = `Upload failed (${up.status})`
+                try { detail = (await up.json()).detail || detail } catch {}
+                throw new Error(detail)
+            }
+            const doc = await up.json()
+            const pages = doc.pages.filter(p => p.has_text)
+            const skipped = doc.pages.length - pages.length
+            if (!pages.length) throw new Error('No text layer in this PDF (scanned image?) — not supported yet')
+
+            const all = []
+            for (let i = 0; i < pages.length; i++) {
+                setPdfBusy(`AI parsing page ${i + 1}/${pages.length}…`)
+                let out
+                try {
+                    out = await api.post('/lmstudio/extract', { text: pages[i].text, prompt: STATEMENT_PROMPT })
+                } catch (err) {
+                    if (err.message === 'Not Found')
+                        throw new Error('PDF import needs the LM Studio module (Settings → Modules)')
+                    throw new Error(`Page ${i + 1}: ${err.message}`)
+                }
+                const parsed = Array.isArray(out.result) ? out.result
+                    : (Array.isArray(out.result?.transactions) ? out.result.transactions : [])
+                for (const r of parsed) {
+                    const amt = typeof r.amount === 'number' ? r.amount : parseFloat(r.amount)
+                    if (!r.date || !isFinite(amt)) continue
+                    all.push({ date: String(r.date), description: String(r.description || '').trim(), amount: String(amt) })
+                }
+            }
+            if (!all.length) throw new Error('The model found no transactions in this statement')
+
+            setCsv({ headers: ['date', 'description', 'amount'], rows: all })
+            setMapping({ date: 'date', payee: 'description', amount: 'amount' })  // auto-mapped
+            setMemoExtra([])
+            setArmed(null)
+            setRows(null)
+            setPdfInfo({ name: file.name, pages: pages.length, count: all.length, skipped })
+        } catch (err) {
+            showToast(err.message, 'error')
+        } finally {
+            setPdfBusy(null)
+        }
     }
 
     function handleBubbleClick(field) {
@@ -174,6 +247,13 @@ export default function ImportPanel({
                 </div>
             )}
 
+            {pdfInfo && csv && (
+                <div className="import-plaid-badge">
+                    📄 {pdfInfo.name} — {pdfInfo.count} transactions parsed from {pdfInfo.pages} page{pdfInfo.pages === 1 ? '' : 's'}
+                    {pdfInfo.skipped > 0 && ` (${pdfInfo.skipped} page${pdfInfo.skipped === 1 ? '' : 's'} had no text)`}
+                </div>
+            )}
+
             {importAccountId && !csv && (
                 <div
                     ref={dropRef}
@@ -182,7 +262,7 @@ export default function ImportPanel({
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
                 >
-                    Drop CSV here
+                    {pdfBusy || 'Drop CSV or PDF statement here'}
                 </div>
             )}
 

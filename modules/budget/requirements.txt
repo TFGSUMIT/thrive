@@ -1,2 +1,4 @@
 # budget/plaid module backend deps (installed into the API image at build time)
-requests>=2.31   # Plaid API calls (bank sync)
+requests>=2.31     # Plaid API calls (bank sync)
+pdfplumber>=0.11   # PDF statement text extraction (#84) — layout-aware so the
+                   # date/description/amount columns survive for the LLM

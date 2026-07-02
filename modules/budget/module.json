@@ -14,7 +14,8 @@
     "api.routers.transactions",
     "api.routers.scheduled",
     "api.routers.reports",
-    "api.routers.plaid"
+    "api.routers.plaid",
+    "api.routers.statements"
   ],
   "requires": []
 }

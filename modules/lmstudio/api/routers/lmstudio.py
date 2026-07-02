@@ -39,8 +39,9 @@ router = APIRouter(prefix="/lmstudio", tags=["lmstudio"])
 LMSTUDIO_BASE = os.environ.get("LMSTUDIO_BASE", "http://192.168.0.50:1234")
 
 CONFIG_DEFAULTS = {
-    "base_url":     LMSTUDIO_BASE,
-    "vision_model": "",
+    "base_url":      LMSTUDIO_BASE,
+    "vision_model":  "",
+    "extract_model": "",   # text→JSON extraction (/extract); falls back to vision_model
 }
 
 
@@ -155,6 +156,12 @@ class VisionRequest(BaseModel):
     mime:   str           = "image/jpeg"
     model:  Optional[str] = None   # override the configured default for one call
 
+class ExtractRequest(BaseModel):
+    text:       str                    # the raw text to extract from
+    prompt:     str                    # instructions; must ask for JSON out
+    model:      Optional[str] = None   # override the configured default
+    max_tokens: int           = 4096   # extraction output can be long (many rows)
+
 
 # ── config routes ────────────────────────────────────────────────────────────
 @router.get("/config")
@@ -252,7 +259,9 @@ async def status():
     """Host reachability + the models it exposes. The frontend filters for
     `vision: true` when it needs a VLM."""
     base = get_cfg("base_url", LMSTUDIO_BASE)
-    out = {"base": base, "online": False, "models": [], "vision_model": get_cfg("vision_model", "")}
+    out = {"base": base, "online": False, "models": [],
+           "vision_model":  get_cfg("vision_model", ""),
+           "extract_model": get_cfg("extract_model", "")}
     try:
         out["models"]  = await probe(base)
         out["online"]  = True
@@ -406,6 +415,21 @@ def enhance(b64: str, mime: str) -> str:
     return base64.b64encode(out.getvalue()).decode()
 
 
+# ── model-reply JSON parsing (shared by vision + extract) ────────────────────
+def _parse_json_reply(raw: str):
+    clean = raw.replace("```json", "").replace("```", "").strip()
+    # Vision models often read an odometer like 056197 and emit it verbatim as a
+    # JSON number — but leading zeros are invalid JSON, so json.loads chokes even
+    # though the digits are correct. Strip leading zeros from number literals
+    # (those following a ':', ',', or '[') before parsing. Leaves "0", "0.5",
+    # and quoted strings untouched.
+    clean = re.sub(r'([:\[,]\s*)0+(\d)', r'\1\2', clean)
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=502, detail=f"Model returned non-JSON: {raw[:200]}")
+
+
 # ── vision call ──────────────────────────────────────────────────────────────
 async def call_vision(b64: str, prompt: str, model: str, base: str) -> dict:
     url = f"{base}/v1/chat/completions"
@@ -439,17 +463,7 @@ async def call_vision(b64: str, prompt: str, model: str, base: str) -> dict:
     except Exception:
         raise HTTPException(status_code=502, detail=f"Unexpected response: {resp.text[:300]}")
 
-    clean = raw.replace("```json", "").replace("```", "").strip()
-    # Vision models often read an odometer like 056197 and emit it verbatim as a
-    # JSON number — but leading zeros are invalid JSON, so json.loads chokes even
-    # though the digits are correct. Strip leading zeros from number literals
-    # (those following a ':', ',', or '[') before parsing. Leaves "0", "0.5",
-    # and quoted strings untouched.
-    clean = re.sub(r'([:\[,]\s*)0+(\d)', r'\1\2', clean)
-    try:
-        return json.loads(clean)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=502, detail=f"Model returned non-JSON: {raw[:200]}")
+    return _parse_json_reply(raw)
 
 
 @router.post("/vision")
@@ -475,3 +489,52 @@ async def vision(req: VisionRequest):
         record_model_result(model, False)
         raise
     return {"result": result, "enhanced_b64": enhanced, "model": model}
+
+
+# ── text extraction ──────────────────────────────────────────────────────────
+async def call_extract(text: str, prompt: str, model: str, base: str, max_tokens: int):
+    url = f"{base}/v1/chat/completions"
+    payload = {
+        "model": model, "max_tokens": max_tokens, "temperature": 0,
+        "messages": [{"role": "user", "content": f"{prompt}\n\n{text}"}],
+    }
+    last_err = None
+    resp = None
+    for attempt in range(2):  # one retry — first call after a model load often fails
+        try:
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                resp = await client.post(url, json=payload)
+                resp.raise_for_status()
+            break
+        except httpx.HTTPStatusError as e:
+            last_err = f"LM Studio HTTP {e.response.status_code}: {e.response.text[:300]}"
+        except httpx.HTTPError as e:
+            last_err = f"LM Studio error: {str(e)}"
+    else:
+        raise HTTPException(status_code=502, detail=last_err or "Extract request failed")
+
+    try:
+        raw = resp.json()["choices"][0]["message"]["content"]
+    except Exception:
+        raise HTTPException(status_code=502, detail=f"Unexpected response: {resp.text[:300]}")
+    return _parse_json_reply(raw)
+
+
+@router.post("/extract")
+async def extract(req: ExtractRequest):
+    """Domain-agnostic TEXT extraction — the sibling of /vision for callers that
+    already have text (e.g. a PDF statement's text layer, #84). The caller
+    supplies a `prompt` instructing the model to return JSON; we run
+    prompt + text through the configured extract model (falling back to the
+    vision model — LM Studio models handle text-only fine) and return the
+    parsed JSON. Same failure bookkeeping as /vision."""
+    base  = get_cfg("base_url", LMSTUDIO_BASE)
+    model = req.model or get_cfg("extract_model", "") or get_cfg("vision_model", "")
+    if not model:
+        raise HTTPException(status_code=400, detail="No model selected — pick one in Settings → LM Studio")
+    try:
+        result = await call_extract(req.text, req.prompt, model, base, req.max_tokens)
+    except HTTPException:
+        record_model_result(model, False)
+        raise
+    return {"result": result, "model": model}
