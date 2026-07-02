@@ -181,9 +181,10 @@ export default function ImportPanel({
         setPdfGroups(gs => gs.map((g, i) => i === idx ? { ...g, accountId, matchedRows: null } : g))
         if (!accountId) return
         try {
-            const existing = await api.get(`/transactions/?account_id=${accountId}&limit=1000`)
+            const existing = await api.get(`/transactions/?account_id=${accountId}&limit=500`)
+            const list = Array.isArray(existing) ? existing : []
             setPdfGroups(gs => gs.map((g, i) => (i === idx && g.accountId === accountId)
-                ? { ...g, matchedRows: matchRows(g.rows, existing, { date: 'date', amount: 'amount' }) } : g))
+                ? { ...g, matchedRows: matchRows(g.rows, list, { date: 'date', amount: 'amount' }) } : g))
         } catch (e) {
             showToast('Match failed: ' + e.message, 'error')
         }
