@@ -726,11 +726,28 @@ function WifiSection() {
 // reports available:false and this renders nothing. The buttons drop a request
 // file the host-side thrive-power.service executes.
 const POWER_BTNS = [
-  { action: 'reboot',         icon: '⟳', tip: 'Reboot',         danger: true,  confirm: 'Reboot this device now?' },
-  { action: 'poweroff',       icon: '⏻', tip: 'Shut down',      danger: true,  confirm: 'Shut down this device? It needs a physical power-cycle to come back.' },
-  { action: 'restart-stack',  icon: '♻', tip: 'Restart thrive', danger: false, confirm: 'Restart the thrive app? The UI will blink for a few seconds.' },
-  { action: 'relaunch-kiosk', icon: '🖥', tip: 'Relaunch kiosk', danger: false, confirm: 'Relaunch the kiosk display?' },
+  { action: 'reboot',         tip: 'Reboot',         danger: true,  confirm: 'Reboot this device now?' },
+  { action: 'poweroff',       tip: 'Shut down',      danger: true,  confirm: 'Shut down this device? It needs a physical power-cycle to come back.' },
+  { action: 'restart-stack',  tip: 'Restart thrive', danger: false, confirm: 'Restart the thrive app? The UI will blink for a few seconds.' },
+  { action: 'relaunch-kiosk', tip: 'Relaunch kiosk', danger: false, confirm: 'Relaunch the kiosk display?' },
 ]
+
+// Clean inline (lucide-style) glyphs so the Power controls read as one consistent
+// icon set rather than a mix of text symbols + emoji. Keyed by action.
+const POWER_ICONS = {
+  reboot:           <path d="M3 12a9 9 0 1 0 3-6.7M3 4v4h4" />,                                  // rotate-cw arrow
+  poweroff:         <><line x1="12" y1="2" x2="12" y2="12" /><path d="M18.36 6.64a9 9 0 1 1-12.73 0" /></>, // power symbol
+  'restart-stack':  <><path d="M21 12a9 9 0 1 1-3-6.7" /><path d="M21 3v4h-4" /><path d="M12 8v4l2 2" /></>, // refresh + clock hand (app)
+  'relaunch-kiosk': <><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></>, // monitor
+}
+function PowerIcon({ action }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {POWER_ICONS[action]}
+    </svg>
+  )
+}
 
 function PowerSection() {
   const [info, setInfo]             = useState(null)
@@ -769,10 +786,10 @@ function PowerSection() {
                   <button style={btnS} onClick={() => setConfirming(null)}>No</button>
                 </span>
               : <button key={b.action} disabled={!!busy} title={b.tip} aria-label={b.tip}
-                  style={{ ...btnS, padding: 0, width: 40, height: 40, fontSize: 18, lineHeight: 1,
+                  style={{ ...btnS, padding: 0, width: 38, height: 38, lineHeight: 1,
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: busy ? 0.5 : 1,
                     ...(b.danger ? { color: 'var(--color-danger,#ef4444)', borderColor: 'var(--color-danger,#ef4444)' } : {}) }}
-                  onClick={() => { setConfirming(b.action); setMsg(null) }}>{b.icon}</button>
+                  onClick={() => { setConfirming(b.action); setMsg(null) }}><PowerIcon action={b.action} /></button>
           ))}
         </div>
         {msg && <div style={{ fontSize: 12, color: 'var(--text-secondary,#aaa)' }}>{msg}</div>}
