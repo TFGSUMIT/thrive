@@ -83,6 +83,7 @@ export default function ImportPanel({
     const [pdfImporting, setPdfImporting] = useState(false)
     const [pdfUrl, setPdfUrl] = useState(null)      // blob: URL of the dropped file, for the side-by-side viewer
     const [splitPct, setSplitPct] = useState(45)    // PDF-pane width % in the full-screen split
+    const [resizing, setResizing] = useState(false) // dragging the divider
     const dropRef = useRef(null)
     const splitRef = useRef(null)
 
@@ -90,17 +91,25 @@ export default function ImportPanel({
     useEffect(() => () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl) }, [pdfUrl])
     const clearPdf = () => { setPdfGroups(null); setPdfInfo(null); setPdfUrl(null) }
 
-    // drag the divider between the PDF and the transactions panes
+    // drag the divider between the PDF and the transactions panes. While dragging
+    // we disable the iframe's pointer events — otherwise the iframe swallows
+    // mousemove once the cursor crosses it and the drag "sticks".
     const startResize = (e) => {
         e.preventDefault()
+        setResizing(true)
+        document.body.style.userSelect = 'none'
         const move = (ev) => {
             const rect = splitRef.current?.getBoundingClientRect()
             if (!rect) return
             const pct = ((ev.clientX - rect.left) / rect.width) * 100
             setSplitPct(Math.min(80, Math.max(20, pct)))
         }
-        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); document.body.style.userSelect = '' }
-        document.body.style.userSelect = 'none'
+        const up = () => {
+            setResizing(false)
+            document.body.style.userSelect = ''
+            window.removeEventListener('mousemove', move)
+            window.removeEventListener('mouseup', up)
+        }
         window.addEventListener('mousemove', move)
         window.addEventListener('mouseup', up)
     }
@@ -409,11 +418,11 @@ export default function ImportPanel({
                         {pdfUrl && (
                             <div style={{ width: `${splitPct}%`, minWidth: 0, flexShrink: 0 }}>
                                 <iframe title="source statement" src={`${pdfUrl}#view=FitH`}
-                                    style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }} />
+                                    style={{ width: '100%', height: '100%', border: 'none', background: '#fff', pointerEvents: resizing ? 'none' : 'auto' }} />
                             </div>
                         )}
                         <div onMouseDown={startResize} title="Drag to resize"
-                            style={{ width: 8, cursor: 'col-resize', background: 'var(--border)', flexShrink: 0 }} />
+                            style={{ width: 8, cursor: 'col-resize', background: resizing ? 'var(--accent)' : 'var(--border)', flexShrink: 0 }} />
                         <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {pdfGroups.map((g, idx) => {
                         const src = g.matchedRows || g.rows
