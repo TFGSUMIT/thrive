@@ -38,6 +38,37 @@ def _lm_base() -> str:
     return DEFAULT_BASE.rstrip("/")
 
 
+def _record_ai_stat(model: str, ok: bool, error: str = None):
+    """Feed the lmstudio module's scoreboard (the "AI status") when it's present —
+    a per-model success/fail tally, plus a load-log row (with reason) on failure,
+    so a chat model that fails to load shows up as a failed-load stat there.
+    Feature-detected via the shared DB: a no-op if the lmstudio module is absent."""
+    if not model:
+        return
+    try:
+        conn = get_db()
+        try:
+            tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if "lmstudio_model_stats" in tables:
+                col = "success" if ok else "fail"
+                conn.execute(
+                    f"""INSERT INTO lmstudio_model_stats (model, {col}, last_used)
+                        VALUES (?, 1, datetime('now'))
+                        ON CONFLICT(model) DO UPDATE SET {col}={col}+1, last_used=datetime('now')""",
+                    (model,),
+                )
+            if not ok and "lmstudio_load_log" in tables:
+                conn.execute(
+                    "INSERT INTO lmstudio_load_log (model, config, ok, error) VALUES (?, NULL, 0, ?)",
+                    (model, ("chat: " + (error or "failed"))[:300]),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
 @router.get("/models")
 async def models():
     """Chat-capable models on the host (embedding-only models filtered out)."""
@@ -58,19 +89,29 @@ async def completions(req: Request):
     """Streaming chat completion — SSE passthrough from LM Studio to the browser."""
     body = await req.json()
     base = _lm_base()
+    model = body.get("model")
     payload = {**body, "stream": True}
 
     async def gen():
+        got = False
         try:
             async with httpx.AsyncClient(timeout=None) as client:
                 async with client.stream("POST", f"{base}/v1/chat/completions", json=payload) as r:
                     if r.status_code != 200:
                         detail = (await r.aread()).decode("utf-8", "ignore")[:300]
+                        # the model host answered but rejected it (e.g. "Failed to
+                        # load model") → record a failed stat against this model
+                        _record_ai_stat(model, False, f"{r.status_code}: {detail}")
                         yield f"data: {json.dumps({'error': f'model host {r.status_code}: {detail}'})}\n\n".encode()
                         return
                     async for chunk in r.aiter_bytes():
+                        got = True
                         yield chunk
+            if got:
+                _record_ai_stat(model, True)
         except Exception as e:
+            # a transport error (host unreachable) is NOT the model's fault — don't
+            # tally it against the model; just surface it.
             yield f"data: {json.dumps({'error': str(e)})}\n\n".encode()
 
     # X-Accel-Buffering:no tells nginx not to buffer this response, so tokens
