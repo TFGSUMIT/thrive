@@ -1,0 +1,11 @@
+{
+  "id": "search",
+  "name": "Search",
+  "icon": "🔍",
+  "description": "Private metasearch — SearXNG, rendered natively in thrive",
+  "version": "0.1.0",
+  "color": "#8b5cf6",
+  "nav_path": "/search",
+  "api_routers": [],
+  "requires": []
+}

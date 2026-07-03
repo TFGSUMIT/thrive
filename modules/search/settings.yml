@@ -1,0 +1,13 @@
+# SearXNG config for the thrive search module. use_default_settings pulls in
+# SearXNG's full engine list + defaults; we only override a few things. The JSON
+# format MUST be enabled — the thrive UI renders results off /search?format=json.
+use_default_settings: true
+server:
+  # instance secret — unique to this module (not shared with any other instance)
+  secret_key: "69d6f125424354bbf7f5693ba1d3739845530b70abde0b870f1f50f3893e322a"
+search:
+  safe_search: 0
+  autocomplete: google
+  formats:
+    - html
+    - json

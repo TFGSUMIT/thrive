@@ -1,0 +1,33 @@
+# search module's backing service — SearXNG (private metasearch).
+#
+# The "a module ships a container" convention (see modules/vault/compose.yml):
+# thrive-compose.sh merges every modules/*/compose.yml that's present, so this
+# runs ONLY when the search module is in modules/. Reached only through nginx at
+# /search/ (never exposed directly); the thrive UI renders results NATIVELY off
+# SearXNG's JSON API, so SearXNG's own HTML/base_url never matters.
+#
+# Paths are relative to the project dir (= trunk/, the first -f file's dir). The
+# module ships its own settings.yml (JSON format enabled, use_default_settings).
+name: thrive
+services:
+  search:
+    image: searxng/searxng:latest
+    container_name: thrive_search
+    restart: unless-stopped
+    volumes:
+      - ../modules/search/settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      - INSTANCE_NAME=thrive
+      # NO base_url: nginx strips the /search/ prefix, so SearXNG runs at ROOT
+      # (its search endpoint is /search). Setting a /search/ base_url would make it
+      # 308-redirect the stripped path back to /search/ (a loop). We render results
+      # from the JSON API, so SearXNG's own link/asset base_url is irrelevant.
+      # granian (the app server) defaults to binding IPv6 `::`, which Docker's
+      # IPv4-only bridge can't reliably reach cross-container → force IPv4.
+      - GRANIAN_HOST=0.0.0.0
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
