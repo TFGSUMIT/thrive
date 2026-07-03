@@ -1,0 +1,13 @@
+[Unit]
+Description=blinkvault printer stream
+After=network.target
+
+[Service]
+User=nerfarrow
+WorkingDirectory=/home/nerfarrow
+ExecStart=/opt/blinkvault/bin/blinkvault-stream --camera "nerfprinter" --output "udp://192.168.0.50:1234?pkt_size=1316&buffer_size=65535"
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

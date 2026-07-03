@@ -10,6 +10,8 @@ import { THEMES, applyTheme, DEFAULT_THEME } from '../theme'
 import EmojiPicker from '../components/EmojiPicker'
 import PasswordInput from '../components/PasswordInput'
 import { MODULES } from '../moduleRegistry'
+import { readBackground, writeBackground, BACKGROUND_OPTS, LOGO_SCALE_DEFAULT } from '../components/Background'
+import BackgroundCustomize from '../components/BackgroundCustomize'
 
 const PASSWORD_MIN = 18   // keep in sync with auth.py (#9)
 
@@ -153,6 +155,90 @@ function FrontPageSection() {
 const UI_ALPHA_KEY = 'thrive:uiAlpha'
 const UI_SCALE_KEY = 'thrive:uiScale'
 
+// Background picker — chooses what paints behind the UI (per device). Writes the
+// unified `thrive:ambient` key via components/Background; the live <Background/>
+// in the shell re-reads it on the `thrive:ambient-changed` event.
+function BackgroundPicker() {
+  const [bg, setBg] = useState(() => readBackground() || { kind: 'none' })
+  const set = (choice) => { writeBackground(choice); setBg(choice) }
+  const pick = (kind) => {
+    if (kind === bg.kind) return
+    if (kind === 'color')      set({ kind: 'color', color: bg.color || '#0f0f0f' })
+    else if (kind === 'image') set({ kind: 'image', url: bg.url || '' })
+    else if (kind === 'logo')  set({ kind: 'logo', scale: bg.scale || LOGO_SCALE_DEFAULT })
+    else                       set({ kind })
+  }
+  const onFile = (e) => {
+    const f = e.target.files?.[0]; if (!f) return
+    if (f.size > 2.5 * 1024 * 1024) { alert('Image too large — keep it under ~2.5 MB (stored on this device).'); return }
+    const r = new FileReader()
+    r.onload = () => set({ kind: 'image', url: String(r.result) })
+    r.readAsDataURL(f)
+  }
+  return (
+    <div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {BACKGROUND_OPTS.map(o => {
+          const on = bg.kind === o.kind
+          return (
+            <button key={o.kind} onClick={() => pick(o.kind)}
+              style={{ ...btnS, ...(on ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : {}) }}>
+              {o.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {bg.kind === 'color' && (
+        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <input type="color" value={bg.color || '#0f0f0f'}
+            onChange={e => set({ kind: 'color', color: e.target.value })}
+            style={{ width: 46, height: 32, padding: 0, background: 'none', border: '1px solid var(--border-color,#333)', borderRadius: 6, cursor: 'pointer' }} />
+          <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--text-secondary,#aaa)' }}>{bg.color || '#0f0f0f'}</span>
+        </div>
+      )}
+
+      {bg.kind === 'image' && (
+        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <input style={inp} placeholder="https://…/photo.jpg" defaultValue={bg.url?.startsWith('data:') ? '' : (bg.url || '')}
+            onKeyDown={e => { if (e.key === 'Enter') { const u = e.target.value.trim(); if (u) set({ kind: 'image', url: u }) } }}
+            onBlur={e => { const u = e.target.value.trim(); if (u && u !== bg.url) set({ kind: 'image', url: u }) }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <label style={{ ...btnS, cursor: 'pointer' }}>
+              Upload…
+              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={onFile} />
+            </label>
+            <span style={{ fontSize: 10, color: 'var(--text-tertiary,#666)' }}>
+              {bg.url?.startsWith('data:') ? 'uploaded image · on this device' : 'paste a URL or upload'}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {bg.kind === 'logo' && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-tertiary,#666)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            <span>Logo size</span>
+            <b style={{ color: 'var(--text-secondary,#aaa)', fontFamily: 'monospace' }}>{Math.round(bg.scale || LOGO_SCALE_DEFAULT)}</b>
+          </div>
+          <input type="range" min="5" max="95" step="1" value={bg.scale || LOGO_SCALE_DEFAULT}
+            onChange={e => set({ kind: 'logo', scale: parseInt(e.target.value, 10) })}
+            style={{ width: '100%', accentColor: 'var(--accent)' }} />
+        </div>
+      )}
+
+      {(bg.kind === 'blackhole' || bg.kind === 'grovekeeper') && (
+        <BackgroundCustomize kind={bg.kind} cfg={bg.cfg || {}}
+          onChange={cfg => set({ kind: bg.kind, cfg })} />
+      )}
+
+      <div style={{ fontSize: 10, color: 'var(--text-tertiary,#666)', marginTop: 10 }}>
+        Paints behind the interface, per device. Lower <b>UI opacity</b> above to let it show through panels.
+      </div>
+    </div>
+  )
+}
+
 function UISection() {
   const { user, updatePrefs } = useAuth()
   const theme = user?.prefs?.theme || DEFAULT_THEME
@@ -230,6 +316,11 @@ function UISection() {
           : <span style={{ color: 'var(--text-tertiary,#666)' }}>IP unavailable</span>}
       </div>
     </div>
+
+      <SubHead>Background</SubHead>
+      <div style={body}>
+        <BackgroundPicker />
+      </div>
     </>
   )
 }

@@ -14,6 +14,7 @@ import OnboardingScreen from './components/OnboardingScreen'
 import ProfilePicker    from './components/ProfilePicker'
 import OnScreenKeyboard from './components/OnScreenKeyboard'
 import ErrorBoundary from './components/ErrorBoundary'
+import Background from './components/Background'
 import LandingPage from './pages/LandingPage'
 import SettingsPage from './pages/SettingsPage'
 import ClockPage from './pages/ClockPage'
@@ -164,67 +165,10 @@ function TopNav({ onOpenPicker }) {
 }
 
 // ── ambient background ────────────────────────────────────────────────────────
-// A single per-device choice (`thrive:ambient` = { module, cfg }) drives which
-// module's renderer paints behind all UI — only one ever does. A module's page
-// "Set as background" button writes this key. The ambient renders only when its
-// module is installed+enabled and you're not already on that module's own
-// (full-quality) page. Forced to cheap quality.
-const AMBIENT_KEY = 'thrive:ambient'
-// background renderers keyed by module id, derived from the registry: a module
-// becomes ambient-capable simply by declaring an `Ambient` component above
-const AMBIENTS = Object.fromEntries(
-  MODULES.filter(m => m.Ambient).map(m => [m.id, { path: m.path.replace('/*', ''), Comp: m.Ambient }])
-)
-function readAmbient() {
-  try {
-    const a = JSON.parse(localStorage.getItem(AMBIENT_KEY))
-    if (a && a.module) return a
-  } catch {}
-  // back-compat: legacy blackhole-only key
-  try {
-    const legacy = JSON.parse(localStorage.getItem('thrive:blackhole:bg'))
-    if (legacy) return { module: 'blackhole', cfg: legacy }
-  } catch {}
-  return null
-}
-function AmbientBackground() {
-  const { user } = useAuth()
-  const location = useLocation()
-  const [modules, setModules] = useState([])
-  const [ambient, setAmbient] = useState(readAmbient)
-
-  useEffect(() => {
-    if (!user) { setModules([]); return }
-    const check = () => api.get('/modules').then(setModules).catch(() => {})
-    check()
-    const onAmbient = () => setAmbient(readAmbient())
-    window.addEventListener('thrive:modules-changed', check)
-    window.addEventListener('thrive:ambient-changed', onAmbient)
-    return () => {
-      window.removeEventListener('thrive:modules-changed', check)
-      window.removeEventListener('thrive:ambient-changed', onAmbient)
-    }
-  }, [user])
-
-  if (!ambient) return null
-  const slot = AMBIENTS[ambient.module]
-  const mod  = modules.find(m => m.id === ambient.module)
-  if (!slot || !mod || !mod.installed || !mod.enabled) return null
-  // never paint the ambient behind a full-screen renderer page (its own OR another's —
-  // those pages fill the viewport with their own canvas)
-  if (Object.values(AMBIENTS).some(s => location.pathname.startsWith(s.path))) return null
-
-  const { Comp } = slot
-  const cfg = ambient.cfg || {}
-  return (
-    <Comp
-      params={cfg.params || {}}
-      toggles={cfg.toggles || {}}
-      quality="auto"           /* ambient/always-on -> self-tunes down on weak GPUs */
-      opacity={0.6}
-    />
-  )
-}
+// The shell background (blackhole / grovekeeper / logo / image / color / none)
+// lives in components/Background.jsx — a single per-device `thrive:ambient`
+// choice, set in Settings → Device → Background. Core owns it (#15); the old
+// standalone blackhole/grovekeeper modules were folded in there.
 
 // ── module overlays (HUD) ─────────────────────────────────────────────────────
 // A module may declare an `Overlay` component (like `Ambient`, but painted ON
@@ -294,7 +238,7 @@ function Shell() {
     <>
       {/* ambient + HUD render module components; isolate them so a bad one fails
           silently instead of taking down the whole shell */}
-      <ErrorBoundary silent><AmbientBackground /></ErrorBoundary>
+      <ErrorBoundary silent><Background /></ErrorBoundary>
       {!immersive && <TopNav onOpenPicker={() => setPickerOpen(true)} />}
       {/* module HUD overlays (e.g. the FPS module) — painted on top, even in
           immersive so they can read frame-rate over a full-screen renderer */}
