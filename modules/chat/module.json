@@ -1,0 +1,11 @@
+{
+  "id": "chat",
+  "name": "Chat",
+  "icon": "💬",
+  "description": "Simple chat with local models via LM Studio",
+  "version": "0.1.0",
+  "color": "#10b981",
+  "nav_path": "/chat",
+  "api_routers": ["api.routers.chat"],
+  "requires": []
+}

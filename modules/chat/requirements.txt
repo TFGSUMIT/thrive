@@ -1,0 +1,2 @@
+# chat module backend deps (baked into the API image at build)
+httpx>=0.27      # proxy chat completions + model list to the LM Studio host
