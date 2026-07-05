@@ -1,0 +1,11 @@
+{
+  "id": "tv",
+  "name": "TV",
+  "icon": "📺",
+  "description": "Live OTA TV + DVR — a native guide over Jellyfin",
+  "version": "0.1.0",
+  "color": "#ef4444",
+  "nav_path": "/tv",
+  "api_routers": ["api.routers.tv"],
+  "requires": []
+}

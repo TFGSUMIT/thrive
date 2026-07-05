@@ -1,0 +1,2 @@
+# tv module backend deps
+httpx>=0.27      # proxy Jellyfin's LiveTV API + channel logos
