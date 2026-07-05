@@ -11,6 +11,7 @@
 # =============================================================================
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, Response
+from datetime import datetime, timezone, timedelta
 import os
 import httpx
 
@@ -56,38 +57,54 @@ def _chan_sort(x):
         return [9999]
 
 
+def _prog(p):
+    """A trimmed program dict for the guide grid (name + airing window)."""
+    return {"name": p.get("Name"), "start": p.get("StartDate"), "end": p.get("EndDate")}
+
+
+# how far forward the guide grid can scroll
+GUIDE_HOURS = 12
+
+
 @router.get("/channels")
 async def channels():
-    """Live channels joined with now-playing EPG, sorted by channel number."""
+    """Live channels each with their forward EPG (now → +12h) for the guide grid."""
     base, key, uid = _jf()
     if not base or not key:
         return JSONResponse({"channels": [], "error": "TV not configured — set the Jellyfin url + api_key."})
+    now_dt = datetime.now(timezone.utc)
     try:
-        async with httpx.AsyncClient(timeout=12.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             cp = {"api_key": key, "userId": uid, "EnableImages": "true", "limit": 300}
             ch = (await client.get(f"{base}/LiveTv/Channels", params=cp)).json().get("Items", [])
-            pp = {"api_key": key, "userId": uid, "isAiring": "true", "limit": 600}
-            pr = (await client.get(f"{base}/LiveTv/Programs/Recommended", params=pp)).json().get("Items", [])
+            # every program still airing between now and +12h, start-ascending, so
+            # each channel's list is already in timeline order for the grid.
+            gp = {"api_key": key, "userId": uid,
+                  "MinEndDate": now_dt.isoformat(), "MaxStartDate": (now_dt + timedelta(hours=GUIDE_HOURS)).isoformat(),
+                  "sortBy": "StartDate", "sortOrder": "Ascending", "limit": 5000}
+            pr = (await client.get(f"{base}/LiveTv/Programs", params=gp)).json().get("Items", [])
     except Exception as e:
         return JSONResponse({"channels": [], "error": str(e)})
 
-    now = {}
+    by_chan = {}
     for p in pr:
         cid = p.get("ChannelId")
-        if cid and cid not in now:
-            now[cid] = {"name": p.get("Name"), "start": p.get("StartDate"), "end": p.get("EndDate")}
+        if cid:
+            by_chan.setdefault(cid, []).append(_prog(p))
 
     out = [{
         "id": c.get("Id"),
         "number": c.get("ChannelNumber"),
         "name": c.get("Name"),
         "has_logo": bool((c.get("ImageTags") or {}).get("Primary")),
-        "now": now.get(c.get("Id")),
+        "programs": by_chan.get(c.get("Id"), []),
     } for c in ch]
     out.sort(key=_chan_sort)
     # web_url = the public https Jellyfin (e.g. tv.nerfarrow.com) the browser
     # embeds/launches; falls back to the LAN base for http/LAN access.
-    return {"channels": out, "jellyfin_url": _cfg("web_url") or base}
+    # server_now lets the grid anchor "now" to the server clock, not the browser's.
+    return {"channels": out, "jellyfin_url": _cfg("web_url") or base,
+            "server_now": now_dt.isoformat(), "guide_hours": GUIDE_HOURS}
 
 
 @router.get("/logo/{channel_id}")
