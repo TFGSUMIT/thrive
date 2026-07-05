@@ -85,7 +85,9 @@ async def channels():
         "now": now.get(c.get("Id")),
     } for c in ch]
     out.sort(key=_chan_sort)
-    return {"channels": out, "jellyfin_url": base}
+    # web_url = the public https Jellyfin (e.g. tv.nerfarrow.com) the browser
+    # embeds/launches; falls back to the LAN base for http/LAN access.
+    return {"channels": out, "jellyfin_url": _cfg("web_url") or base}
 
 
 @router.get("/logo/{channel_id}")
