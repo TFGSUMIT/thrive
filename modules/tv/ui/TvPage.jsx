@@ -155,16 +155,20 @@ export default function TvPage() {
               const fav = favs.has(c.id)
               return (
                 <div key={c.id} style={{ display: 'flex', height: ROW_H, borderBottom: '1px solid var(--border-color,#1e1e1e)' }}>
-                  {/* sticky channel cell */}
+                  {/* sticky channel cell — click the channel itself to watch it,
+                      so no-guide channels are reachable too */}
                   <div style={{ position: 'sticky', left: 0, zIndex: 4, width: COL_W, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, padding: '0 8px', background: 'var(--bg-primary,#0f0f0f)', borderRight: '1px solid var(--border-color,#2a2a2a)' }}>
-                    <div style={{ width: 34, height: 34, flexShrink: 0, borderRadius: 6, background: 'var(--bg-tertiary,#222)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                      {c.has_logo
-                        ? <img src={`/api/tv/logo/${c.id}`} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                        : <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary,#aaa)' }}>{c.number}</span>}
-                    </div>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: 9, fontFamily: 'monospace', color: 'var(--text-tertiary,#666)' }}>{c.number}</div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary,#e8e6e0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
+                    <div onClick={() => open(c)} title={jellyfin ? `Watch ${c.name}` : c.name}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, cursor: jellyfin ? 'pointer' : 'default' }}>
+                      <div style={{ width: 34, height: 34, flexShrink: 0, borderRadius: 6, background: 'var(--bg-tertiary,#222)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        {c.has_logo
+                          ? <img src={`/api/tv/logo/${c.id}`} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                          : <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary,#aaa)' }}>{c.number}</span>}
+                      </div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 9, fontFamily: 'monospace', color: 'var(--text-tertiary,#666)' }}>{c.number}</div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary,#e8e6e0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
+                      </div>
                     </div>
                     <button onClick={() => toggleFav(c.id)} title={fav ? 'Unfavorite' : 'Favorite'}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, lineHeight: 1, color: fav ? 'var(--accent,#ef4444)' : 'var(--text-tertiary,#555)', padding: 2, flexShrink: 0 }}>{fav ? '★' : '☆'}</button>
