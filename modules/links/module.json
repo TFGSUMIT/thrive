@@ -1,0 +1,12 @@
+{
+  "id": "links",
+  "name": "Links",
+  "icon": "🔖",
+  "description": "A native bookmarks / app-launcher dashboard (flame, but thrive)",
+  "version": "0.1.0",
+  "color": "#38bdf8",
+  "nav_path": "/links",
+  "core": false,
+  "api_routers": ["api.routers.links"],
+  "requires": []
+}
