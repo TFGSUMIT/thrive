@@ -36,6 +36,10 @@ def init_db():
                 done_at    TEXT
             )
         """)
+        # archived_at: set when a completed task is swept to history (kept, not deleted)
+        cols = [r[1] for r in db.execute("PRAGMA table_info(todos)").fetchall()]
+        if "archived_at" not in cols:
+            db.execute("ALTER TABLE todos ADD COLUMN archived_at TEXT")
         db.commit()
     finally:
         db.close()
@@ -61,9 +65,22 @@ class TodoPatch(BaseModel):
 @router.get("")
 def list_todos(request: Request, db=Depends(get_db)):
     _auth(request)
-    # open tasks first (done ASC), newest within each group
+    # active list = everything not yet swept to history; open first, newest within
     return [dict(r) for r in db.execute(
-        "SELECT id, title, done, created_at, done_at FROM todos ORDER BY done, id DESC"
+        "SELECT id, title, done, created_at, done_at FROM todos "
+        "WHERE archived_at IS NULL ORDER BY done, id DESC"
+    ).fetchall()]
+
+
+@router.get("/history")
+def list_history(request: Request, db=Depends(get_db), limit: int = 200):
+    """Completed tasks swept to history, newest first."""
+    _auth(request)
+    limit = max(1, min(limit, 1000))
+    return [dict(r) for r in db.execute(
+        "SELECT id, title, done, created_at, done_at, archived_at FROM todos "
+        "WHERE archived_at IS NOT NULL ORDER BY archived_at DESC, id DESC LIMIT ?",
+        (limit,),
     ).fetchall()]
 
 
@@ -101,3 +118,26 @@ def delete_todo(todo_id: int, request: Request, db=Depends(get_db)):
     _auth(request)
     db.execute("DELETE FROM todos WHERE id=?", (todo_id,))
     db.commit()
+
+
+@router.post("/archive-done")
+def archive_done(request: Request, db=Depends(get_db)):
+    """Sweep all checked-off tasks into history (kept, not deleted)."""
+    _auth(request)
+    n = db.execute(
+        "UPDATE todos SET archived_at=datetime('now') "
+        "WHERE done=1 AND archived_at IS NULL"
+    ).rowcount
+    db.commit()
+    return {"archived": n}
+
+
+@router.post("/{todo_id}/restore")
+def restore_todo(todo_id: int, request: Request, db=Depends(get_db)):
+    """Pull a task back out of history into the active list."""
+    _auth(request)
+    if not db.execute("SELECT id FROM todos WHERE id=?", (todo_id,)).fetchone():
+        raise HTTPException(status_code=404, detail="Not found")
+    db.execute("UPDATE todos SET archived_at=NULL WHERE id=?", (todo_id,))
+    db.commit()
+    return {"ok": True}
