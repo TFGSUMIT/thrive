@@ -1,0 +1,12 @@
+{
+  "id": "inventory",
+  "name": "Inventory",
+  "icon": "📦",
+  "description": "A home inventory of what you own — value, warranties, serials, by room",
+  "version": "0.1.0",
+  "color": "#a855f7",
+  "nav_path": "/inventory",
+  "core": false,
+  "api_routers": ["api.routers.inventory"],
+  "requires": []
+}
