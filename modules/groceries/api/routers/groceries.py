@@ -18,7 +18,7 @@ router = APIRouter(prefix="/groceries", tags=["groceries"])
 # descriptive User-Agent, and holds to a "1 real scan = 1 call" courtesy rule,
 # which the product_cache below honours (repeat barcodes never re-hit the API).
 OFF_UA = "thrive-groceries/0.1 (github.com/nerfarrow/thrive)"
-OFF_FIELDS = "code,product_name,brands,categories,image_small_url"
+OFF_FIELDS = "code,product_name,generic_name,brands,categories,quantity,image_small_url"
 OFF_TIMEOUT = 8
 
 
@@ -51,10 +51,14 @@ def init_db():
                 name       TEXT,
                 brand      TEXT,
                 category   TEXT,
+                quantity   TEXT,
                 image      TEXT,
                 fetched_at TEXT DEFAULT (datetime('now'))
             )
         """)
+        pc = [r[1] for r in db.execute("PRAGMA table_info(product_cache)").fetchall()]
+        if "quantity" not in pc:
+            db.execute("ALTER TABLE product_cache ADD COLUMN quantity TEXT")
         db.commit()
     finally:
         db.close()
@@ -75,11 +79,18 @@ def _digits(s: str) -> str:
 
 
 def _short_category(categories: str) -> Optional[str]:
-    """OFF `categories` is a comma list, broad→specific; keep the most specific."""
+    """OFF `categories` is a comma list, broad→specific; keep the most specific,
+    stripping a raw taxonomy tag's language prefix ('en:crackers' → 'Crackers')."""
     if not categories:
         return None
     parts = [p.strip() for p in categories.split(",") if p.strip()]
-    return parts[-1] if parts else None
+    if not parts:
+        return None
+    c = parts[-1]
+    if len(c) > 3 and c[2] == ":" and c[:2].isalpha():   # 'en:whole-wheat-crackers'
+        c = c[3:].replace("-", " ")
+        c = c[:1].upper() + c[1:]
+    return c
 
 
 def _text(v) -> Optional[str]:
@@ -91,13 +102,23 @@ def _text(v) -> Optional[str]:
     return (v.strip() if isinstance(v, str) else "") or None
 
 
+def _qty(v) -> Optional[str]:
+    """Package size, e.g. '200 g'. Keep only if it carries a digit (drops junk
+    like a bare 'g'); OFF sometimes stores it as a number, so coerce first."""
+    if isinstance(v, (int, float)):
+        v = str(v)
+    t = _text(v)
+    return t if (t and any(c.isdigit() for c in t)) else None
+
+
 def _shape(p: dict) -> dict:
-    """OFF product JSON → our 4 fields (+ barcode)."""
+    """OFF product JSON → the fields we surface (+ barcode)."""
     return {
         "barcode":  _text(p.get("code")) or "",
-        "name":     _text(p.get("product_name")),
+        "name":     _text(p.get("product_name")) or _text(p.get("generic_name")),
         "brand":    _text(p.get("brands")),
         "category": _short_category(_text(p.get("categories")) or ""),
+        "quantity": _qty(p.get("quantity")),
         "image":    _text(p.get("image_small_url")) or _text(p.get("image_url")),
     }
 
@@ -173,13 +194,14 @@ def clear_got(request: Request, db=Depends(get_db)):
 
 def _cache_put(db, item: dict, found: int):
     db.execute(
-        "INSERT INTO product_cache (barcode, found, name, brand, category, image, fetched_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, datetime('now')) "
+        "INSERT INTO product_cache (barcode, found, name, brand, category, quantity, image, fetched_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now')) "
         "ON CONFLICT(barcode) DO UPDATE SET "
         "found=excluded.found, name=excluded.name, brand=excluded.brand, "
-        "category=excluded.category, image=excluded.image, fetched_at=excluded.fetched_at",
+        "category=excluded.category, quantity=excluded.quantity, image=excluded.image, "
+        "fetched_at=excluded.fetched_at",
         (item.get("barcode"), found, item.get("name"), item.get("brand"),
-         item.get("category"), item.get("image")),
+         item.get("category"), item.get("quantity"), item.get("image")),
     )
 
 
@@ -192,14 +214,14 @@ def lookup_barcode(barcode: str, request: Request, db=Depends(get_db)):
         raise HTTPException(status_code=400, detail="Not a valid barcode")
 
     cached = db.execute(
-        "SELECT found, name, brand, category, image FROM product_cache WHERE barcode=?",
+        "SELECT found, name, brand, category, quantity, image FROM product_cache WHERE barcode=?",
         (code,),
     ).fetchone()
     if cached is not None:
         if not cached["found"]:
             return {"found": False, "barcode": code, "source": "cache"}
         return {"found": True, "source": "cache", "barcode": code,
-                **{k: cached[k] for k in ("name", "brand", "category", "image")}}
+                **{k: cached[k] for k in ("name", "brand", "category", "quantity", "image")}}
 
     data = _off_get(f"https://world.openfoodfacts.org/api/v2/product/{urllib.parse.quote(code)}?fields={OFF_FIELDS}")
     if data.get("status") == 1 and data.get("product"):
@@ -221,8 +243,11 @@ def search_products(request: Request, q: str, db=Depends(get_db)):
     term = (q or "").strip()
     if len(term) < 2:
         return {"results": []}
+    # sort_by=-popularity_key surfaces the well-populated canonical products
+    # (with categories/quantities/images) instead of bare duplicate records.
     url = ("https://search.openfoodfacts.org/search?"
-           + urllib.parse.urlencode({"q": term, "page_size": 10, "fields": OFF_FIELDS}))
+           + urllib.parse.urlencode({"q": term, "page_size": 10,
+                                     "sort_by": "-popularity_key", "fields": OFF_FIELDS}))
     data = _off_get(url)
     results = []
     for p in (data.get("hits") or []):

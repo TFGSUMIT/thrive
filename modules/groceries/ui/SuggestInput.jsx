@@ -74,6 +74,11 @@ export default function SuggestInput({ value, onChange, onEnter, onPick, style, 
 function Suggestion({ p, accent, onClick }) {
   const [imgOk, setImgOk] = useState(true)
   const [hov, setHov] = useState(false)
+  // richer subtitle: brand (only if it isn't just the name), then category, then size
+  const sub = [
+    p.brand && p.brand.toLowerCase() !== (p.name || '').toLowerCase() ? p.brand : null,
+    p.category, p.quantity,
+  ].filter(Boolean).join(' · ')
   return (
     <div onMouseDown={e => { e.preventDefault(); onClick() }} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 11px', cursor: 'pointer', background: hov ? 'var(--bg-tertiary,#222)' : 'transparent', borderBottom: '1px solid var(--border-color,#222)' }}>
@@ -82,7 +87,7 @@ function Suggestion({ p, accent, onClick }) {
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 14, color: 'var(--text-primary,#e8e6e0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
-        {(p.brand || p.category) && <div style={{ fontSize: 11, color: 'var(--text-tertiary,#666)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[p.brand, p.category].filter(Boolean).join(' · ')}</div>}
+        {sub && <div style={{ fontSize: 11, color: 'var(--text-tertiary,#666)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>}
       </div>
       <span style={{ flexShrink: 0, color: accent, fontSize: 16 }}>+</span>
     </div>
