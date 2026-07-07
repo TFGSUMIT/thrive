@@ -8,11 +8,18 @@
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 from typing import Optional
-import os, sqlite3
+import os, sqlite3, json, urllib.parse, urllib.request, urllib.error
 
 from routers.auth import get_db as _connect, current_user_from_request
 
 router = APIRouter(prefix="/groceries", tags=["groceries"])
+
+# Open Food Facts — on-demand product lookup. OFF asks that every caller send a
+# descriptive User-Agent, and holds to a "1 real scan = 1 call" courtesy rule,
+# which the product_cache below honours (repeat barcodes never re-hit the API).
+OFF_UA = "thrive-groceries/0.1 (github.com/nerfarrow/thrive)"
+OFF_FIELDS = "code,product_name,brands,categories,image_small_url"
+OFF_TIMEOUT = 8
 
 
 def get_db():
@@ -35,6 +42,19 @@ def init_db():
                 created_at TEXT DEFAULT (datetime('now'))
             )
         """)
+        # Local Open Food Facts cache — one row per barcode seen. found=0 is a
+        # tombstone so known-misses don't re-hit the API either.
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS product_cache (
+                barcode    TEXT PRIMARY KEY,
+                found      INTEGER NOT NULL DEFAULT 0,
+                name       TEXT,
+                brand      TEXT,
+                category   TEXT,
+                image      TEXT,
+                fetched_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
         db.commit()
     finally:
         db.close()
@@ -47,6 +67,39 @@ def _auth(request: Request):
     if not u:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return u
+
+
+# -- Open Food Facts helpers --------------------------------------------------
+def _digits(s: str) -> str:
+    return "".join(ch for ch in (s or "") if ch.isdigit())
+
+
+def _short_category(categories: str) -> Optional[str]:
+    """OFF `categories` is a comma list, broad→specific; keep the most specific."""
+    if not categories:
+        return None
+    parts = [p.strip() for p in categories.split(",") if p.strip()]
+    return parts[-1] if parts else None
+
+
+def _shape(p: dict) -> dict:
+    """OFF product JSON → our 4 fields (+ barcode)."""
+    return {
+        "barcode":  p.get("code") or "",
+        "name":     (p.get("product_name") or "").strip() or None,
+        "brand":    (p.get("brands") or "").strip() or None,
+        "category": _short_category(p.get("categories") or ""),
+        "image":    (p.get("image_small_url") or "").strip() or None,
+    }
+
+
+def _off_get(url: str) -> dict:
+    req = urllib.request.Request(url, headers={"User-Agent": OFF_UA})
+    try:
+        with urllib.request.urlopen(req, timeout=OFF_TIMEOUT) as r:
+            return json.load(r)
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+        raise HTTPException(status_code=502, detail=f"Open Food Facts unreachable: {e}")
 
 
 class ItemIn(BaseModel):
@@ -107,3 +160,69 @@ def clear_got(request: Request, db=Depends(get_db)):
     n = db.execute("DELETE FROM groceries WHERE got=1").rowcount
     db.commit()
     return {"cleared": n}
+
+
+def _cache_put(db, item: dict, found: int):
+    db.execute(
+        "INSERT INTO product_cache (barcode, found, name, brand, category, image, fetched_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, datetime('now')) "
+        "ON CONFLICT(barcode) DO UPDATE SET "
+        "found=excluded.found, name=excluded.name, brand=excluded.brand, "
+        "category=excluded.category, image=excluded.image, fetched_at=excluded.fetched_at",
+        (item.get("barcode"), found, item.get("name"), item.get("brand"),
+         item.get("category"), item.get("image")),
+    )
+
+
+@router.get("/lookup/{barcode}")
+def lookup_barcode(barcode: str, request: Request, db=Depends(get_db)):
+    """Resolve a barcode to a product — local cache first, then OFF (and cache it)."""
+    _auth(request)
+    code = _digits(barcode)
+    if not (8 <= len(code) <= 14):
+        raise HTTPException(status_code=400, detail="Not a valid barcode")
+
+    cached = db.execute(
+        "SELECT found, name, brand, category, image FROM product_cache WHERE barcode=?",
+        (code,),
+    ).fetchone()
+    if cached is not None:
+        if not cached["found"]:
+            return {"found": False, "barcode": code, "source": "cache"}
+        return {"found": True, "source": "cache", "barcode": code,
+                **{k: cached[k] for k in ("name", "brand", "category", "image")}}
+
+    data = _off_get(f"https://world.openfoodfacts.org/api/v2/product/{urllib.parse.quote(code)}?fields={OFF_FIELDS}")
+    if data.get("status") == 1 and data.get("product"):
+        item = _shape(data["product"])
+        item["barcode"] = code
+        _cache_put(db, item, 1 if item["name"] else 0); db.commit()
+        if item["name"]:
+            return {"found": True, "source": "off", **item}
+    else:
+        _cache_put(db, {"barcode": code}, 0); db.commit()
+    return {"found": False, "barcode": code, "source": "off"}
+
+
+@router.get("/search")
+def search_products(request: Request, q: str, db=Depends(get_db)):
+    """Name search against OFF; cache each hit's barcode for instant re-lookup."""
+    _auth(request)
+    term = (q or "").strip()
+    if len(term) < 2:
+        return {"results": []}
+    url = ("https://world.openfoodfacts.org/cgi/search.pl?"
+           + urllib.parse.urlencode({"search_terms": term, "search_simple": 1,
+                                     "action": "process", "json": 1, "page_size": 10,
+                                     "fields": OFF_FIELDS}))
+    data = _off_get(url)
+    results = []
+    for p in (data.get("products") or []):
+        item = _shape(p)
+        if not item["name"]:
+            continue
+        if item["barcode"]:
+            _cache_put(db, item, 1)
+        results.append(item)
+    db.commit()
+    return {"results": results}
