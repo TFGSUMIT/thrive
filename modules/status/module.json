@@ -1,0 +1,12 @@
+{
+  "id": "status",
+  "name": "Status",
+  "icon": "📡",
+  "description": "Up/down monitor for your services & equipment (HTTP + TCP checks)",
+  "version": "0.1.0",
+  "color": "#10b981",
+  "nav_path": "/status",
+  "core": false,
+  "api_routers": ["api.routers.status"],
+  "requires": []
+}
