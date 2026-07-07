@@ -82,14 +82,23 @@ def _short_category(categories: str) -> Optional[str]:
     return parts[-1] if parts else None
 
 
+def _text(v) -> Optional[str]:
+    """Coerce an OFF field to a trimmed string. The v2 product API returns
+    `brands` as a comma-string, but the search service returns it as a list —
+    normalise both (and drop empties to None)."""
+    if isinstance(v, list):
+        v = ", ".join(str(x).strip() for x in v if x)
+    return (v.strip() if isinstance(v, str) else "") or None
+
+
 def _shape(p: dict) -> dict:
     """OFF product JSON → our 4 fields (+ barcode)."""
     return {
-        "barcode":  p.get("code") or "",
-        "name":     (p.get("product_name") or "").strip() or None,
-        "brand":    (p.get("brands") or "").strip() or None,
-        "category": _short_category(p.get("categories") or ""),
-        "image":    (p.get("image_small_url") or "").strip() or None,
+        "barcode":  _text(p.get("code")) or "",
+        "name":     _text(p.get("product_name")),
+        "brand":    _text(p.get("brands")),
+        "category": _short_category(_text(p.get("categories")) or ""),
+        "image":    _text(p.get("image_small_url")) or _text(p.get("image_url")),
     }
 
 
@@ -206,18 +215,17 @@ def lookup_barcode(barcode: str, request: Request, db=Depends(get_db)):
 
 @router.get("/search")
 def search_products(request: Request, q: str, db=Depends(get_db)):
-    """Name search against OFF; cache each hit's barcode for instant re-lookup."""
+    """Name search against OFF's search service (the legacy cgi/search.pl is
+    perpetually 503); cache each hit's barcode for instant re-lookup."""
     _auth(request)
     term = (q or "").strip()
     if len(term) < 2:
         return {"results": []}
-    url = ("https://world.openfoodfacts.org/cgi/search.pl?"
-           + urllib.parse.urlencode({"search_terms": term, "search_simple": 1,
-                                     "action": "process", "json": 1, "page_size": 10,
-                                     "fields": OFF_FIELDS}))
+    url = ("https://search.openfoodfacts.org/search?"
+           + urllib.parse.urlencode({"q": term, "page_size": 10, "fields": OFF_FIELDS}))
     data = _off_get(url)
     results = []
-    for p in (data.get("products") or []):
+    for p in (data.get("hits") or []):
         item = _shape(p)
         if not item["name"]:
             continue
