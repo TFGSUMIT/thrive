@@ -126,8 +126,12 @@ function ScannerOverlay({ accent, onDetect, onClose }) {
     const stop = () => { cancelled = true; if (raf) cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach(t => t.stop()) }
     ;(async () => {
       let detector
-      try { detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'] }) }
-      catch { setErr('Scanning not supported on this browser.'); return }
+      try {
+        const supported = await window.BarcodeDetector.getSupportedFormats()
+        const want = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'].filter(f => supported.includes(f))
+        if (!want.length) { setErr('Barcode scanning not available on this browser.'); return }
+        detector = new window.BarcodeDetector({ formats: want })
+      } catch { setErr('Scanning not supported on this browser.'); return }
       try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } }) }
       catch (e) { setErr(e?.name === 'NotAllowedError' ? 'Camera permission denied.' : 'Camera unavailable (needs HTTPS).'); return }
       if (cancelled) { stream.getTracks().forEach(t => t.stop()); return }
