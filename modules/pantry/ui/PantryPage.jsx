@@ -6,7 +6,7 @@
 // =============================================================================
 import { useState, useEffect } from 'react'
 import { api } from '@trunk/api'
-import ProductLookup from './ProductLookup'
+import SuggestInput from './SuggestInput'
 
 const ACCENT = '#14b8a6'
 const LOCS = [
@@ -62,7 +62,6 @@ export default function PantryPage() {
   const [filter, setFilter] = useState('all')
   const [groceries, setGroceries] = useState(false)  // groceries module active?
   const [flash, setFlash] = useState(null)
-  const [lookOpen, setLookOpen] = useState(false)
 
   const load = () => api.get('/pantry').then(setItems).catch(() => {})
   useEffect(() => { load() }, [])
@@ -100,17 +99,14 @@ export default function PantryPage() {
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        <input style={{ ...inp, flex: '2 1 180px' }} value={name} placeholder="Add an item…" autoComplete="off"
-          onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} />
+        <SuggestInput wrapStyle={{ flex: '2 1 180px' }} style={inp} accent={ACCENT} enabled={groceries}
+          placeholder={groceries ? 'Add an item… (or scan / search)' : 'Add an item…'}
+          value={name} onChange={setName} onEnter={add} onPick={addProduct} />
         <select style={{ ...inp, flex: '1 1 110px' }} value={loc} onChange={e => setLoc(e.target.value)}>
           {LOCS.map(l => <option key={l.id} value={l.id}>{l.icon} {l.label}</option>)}
         </select>
-        {groceries && <button title="look up a product" onClick={() => setLookOpen(o => !o)}
-          style={{ width: 46, flexShrink: 0, fontSize: 18, background: 'var(--bg-tertiary,#222)', border: `1px solid ${lookOpen ? ACCENT : 'var(--border-color,#333)'}`, borderRadius: 8, color: lookOpen ? ACCENT : 'inherit', cursor: 'pointer' }}>🔍</button>}
         <button style={{ width: 52, flexShrink: 0, fontSize: 24, background: ACCENT, border: 'none', borderRadius: 8, color: '#0f0f0f', fontWeight: 700, cursor: 'pointer' }} onClick={add}>+</button>
       </div>
-
-      {groceries && lookOpen && <ProductLookup accent={ACCENT} onPick={addProduct} />}
 
       <div className="pantry-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         <style>{`.pantry-scroll::-webkit-scrollbar{display:none}.pantry-scroll{scrollbar-width:none}`}</style>
