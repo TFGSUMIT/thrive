@@ -3,10 +3,11 @@
 //    across a sticky top header, program cells sized to their airing window,
 //    scroll horizontally through ~12h. A red "now" line marks the current time.
 //  • ★ favorites (per-device) float channels to the top; a "favorites only" toggle
-//  • click a program → a small floating player (Jellyfin embedded via the https
-//    tv subdomain); an ⤢ expand button goes full-screen. Same iframe stays
-//    mounted across resize so playback never restarts.
-import { useState, useEffect, useMemo } from 'react'
+//  • click a channel/program → a small floating player streaming the channel
+//    itself (HLS via the backend proxy + hls.js); ⤢ expands it. The player stays
+//    mounted across resize so playback never restarts; closing it frees the tuner.
+import { useState, useEffect, useMemo, useRef } from 'react'
+import Hls from 'hls.js'
 
 const FAV_KEY = 'thrive:tv:favorites'
 
@@ -206,13 +207,82 @@ export default function TvPage() {
               <button onClick={close} title="Close"
                 style={{ background: 'none', border: 'none', color: 'var(--text-primary,#e8e6e0)', cursor: 'pointer', fontSize: 17, padding: '2px 6px' }}>✕</button>
             </div>
-            <iframe title={watch.name} src={`${jellyfin}/web/#/details?id=${watch.id}`}
-              allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowFullScreen
-              style={expanded
-                ? { flex: 1, width: '100%', border: 'none', borderRadius: 10, background: '#000' }
-                : { width: '100%', aspectRatio: '16 / 9', border: 'none', background: '#000', display: 'block' }} />
+            <LivePlayer channel={watch} expanded={expanded} jellyfin={jellyfin} />
           </div>
         </>
+      )}
+    </div>
+  )
+}
+
+// Floating live player: fetches a proxied HLS playlist from the backend (the
+// Jellyfin api_key never reaches the browser) and plays it with hls.js. Live
+// OTA cold-starts are slow — Jellyfin has to grab a tuner and transcode the
+// first segments — so timeouts are generous and a "tuning…" overlay covers the
+// wait. Unmount (close/channel-switch) destroys hls and frees the tuner.
+function LivePlayer({ channel, expanded, jellyfin }) {
+  const videoRef = useRef(null)
+  const [state, setState] = useState('tuning')   // tuning | on | error
+
+  useEffect(() => {
+    const video = videoRef.current
+    let hls = null, sess = null, dead = false
+    setState('tuning')
+
+    const tryPlay = () => video.play().catch(() => { video.muted = true; video.play().catch(() => {}) })
+
+    fetch(`/api/tv/stream/${channel.id}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => {
+        if (dead || !d.url) { if (!dead) setState('error'); sess = d; return }
+        sess = d
+        if (Hls.isSupported()) {
+          hls = new Hls({
+            liveDurationInfinity: true,
+            manifestLoadingTimeOut: 60000,   // master playlist
+            levelLoadingTimeOut: 150000,     // child playlist blocks on tuner+transcode cold-start
+            fragLoadingTimeOut: 60000,
+          })
+          hls.loadSource(d.url)
+          hls.attachMedia(video)
+          hls.on(Hls.Events.FRAG_BUFFERED, () => { setState('on'); if (video.paused) tryPlay() })
+          hls.on(Hls.Events.ERROR, (_, data) => { if (data.fatal) setState('error') })
+          tryPlay()
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = d.url                  // Safari plays HLS natively
+          video.addEventListener('playing', () => setState('on'), { once: true })
+          tryPlay()
+        } else setState('error')
+      })
+      .catch(() => { if (!dead) setState('error') })
+
+    return () => {
+      dead = true
+      if (hls) hls.destroy()
+      video.removeAttribute('src'); video.load()
+      if (sess?.device_id) {
+        const q = `device_id=${encodeURIComponent(sess.device_id)}&play_session_id=${encodeURIComponent(sess.play_session_id || '')}`
+        fetch(`/api/tv/stream/stop?${q}`, { method: 'POST', credentials: 'include', keepalive: true }).catch(() => {})
+      }
+    }
+  }, [channel.id])
+
+  const box = expanded
+    ? { flex: 1, position: 'relative', minHeight: 0, borderRadius: 10, overflow: 'hidden', background: '#000' }
+    : { position: 'relative', width: '100%', aspectRatio: '16 / 9', background: '#000' }
+  const overlay = { position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary,#aaa)', fontFamily: 'monospace', fontSize: 13, background: '#000', pointerEvents: 'none' }
+
+  return (
+    <div style={box}>
+      <video ref={videoRef} controls autoPlay playsInline
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', background: '#000' }} />
+      {state === 'tuning' && <div style={overlay}><span>📡 tuning {channel.number}…</span><span style={{ fontSize: 10, color: 'var(--text-tertiary,#666)' }}>first start takes a moment</span></div>}
+      {state === 'error' && (
+        <div style={{ ...overlay, pointerEvents: 'auto' }}>
+          <span>stream failed</span>
+          {jellyfin && <a href={`${jellyfin}/web/#/details?id=${channel.id}`} target="_blank" rel="noreferrer"
+            style={{ color: 'var(--accent,#ef4444)', fontSize: 12 }}>open in Jellyfin ↗</a>}
+        </div>
       )}
     </div>
   )

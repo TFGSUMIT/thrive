@@ -3,15 +3,16 @@
 #
 # Jellyfin (+ Tvheadend) runs the OTA DVR; this proxies its LiveTV API so the
 # browser never needs the Jellyfin API key (stays server-side): channel list
-# joined with now-playing EPG, plus a logo passthrough. Playback punts to the
-# full Jellyfin app (a launcher in the UI) — it handles transcoding/codecs.
+# joined with now-playing EPG, a logo passthrough, and HLS playback proxying
+# for the guide's popup player (the full Jellyfin app stays as a launcher).
 #
 # Config (tv_config key/value, per-deployment, not committed): url, api_key,
 # user_id. Feature-detect pattern like the chat/lmstudio modules.
 # =============================================================================
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse, Response
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from datetime import datetime, timezone, timedelta
+from urllib.parse import urlparse, parse_qs
 import os
 import httpx
 
@@ -105,6 +106,107 @@ async def channels():
     # server_now lets the grid anchor "now" to the server clock, not the browser's.
     return {"channels": out, "jellyfin_url": _cfg("web_url") or base,
             "server_now": now_dt.isoformat(), "guide_hours": GUIDE_HOURS}
+
+
+# ── in-popup playback (#93) ───────────────────────────────────────────────────
+# The guide popup plays the channel itself: /stream does Jellyfin's PlaybackInfo
+# handshake server-side and hands the browser a playlist URL under /hls, which
+# proxies playlist + segments with the api_key appended here — the key never
+# reaches the browser. /stream/stop frees the tuner/transcode on popup close.
+
+# what we ask Jellyfin to transcode to: HLS h264/aac — what hls.js plays
+_HLS_PROFILE = {"DeviceProfile": {
+    "MaxStreamingBitrate": 20_000_000,
+    "TranscodingProfiles": [{"Container": "ts", "Type": "Video",
+                             "VideoCodec": "h264", "AudioCodec": "aac", "Protocol": "hls"}],
+    "DirectPlayProfiles": [{"Container": "mp4", "Type": "Video"}],
+}}
+
+
+@router.get("/stream/{channel_id}")
+async def stream(channel_id: str):
+    """PlaybackInfo handshake → proxied HLS playlist URL for the popup player."""
+    base, key, uid = _jf()
+    if not base or not key:
+        return JSONResponse({"error": "TV not configured"}, status_code=503)
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.post(f"{base}/Items/{channel_id}/PlaybackInfo",
+                                  params={"api_key": key, "userId": uid, "AutoOpenLiveStream": "true"},
+                                  json=_HLS_PROFILE)
+            d = r.json()
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=502)
+    ms = (d.get("MediaSources") or [{}])[0]
+    tu = ms.get("TranscodingUrl")
+    if not tu:
+        return JSONResponse({"error": "Channel has no transcodable stream"}, status_code=502)
+    device_id = (parse_qs(urlparse(tu).query).get("DeviceId") or [""])[0]
+    # the browser plays through our proxy; TranscodingUrl starts with /videos/…
+    return {"url": "/api/tv/hls" + tu,
+            "play_session_id": d.get("PlaySessionId") or "",
+            "device_id": device_id}
+
+
+@router.get("/hls/{path:path}")
+async def hls_proxy(path: str, request: Request):
+    """Playlist/segment passthrough. Whitelisted to Jellyfin's /videos/ tree;
+    strips any client-sent api_key and appends the real one server-side.
+    Long read timeout: the FIRST child-playlist fetch blocks while Jellyfin
+    tunes the channel and produces the first transcoded segments."""
+    base, key, _ = _jf()
+    if not base or not key or not path.lower().startswith("videos/"):
+        return Response(status_code=404)
+    params = [(k, v) for k, v in request.query_params.multi_items() if k.lower() != "api_key"]
+    params.append(("api_key", key))
+    client = httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=150.0, write=30.0, pool=10.0))
+    try:
+        req = client.build_request("GET", f"{base}/{path}", params=params)
+        r = await client.send(req, stream=True)
+    except Exception:
+        await client.aclose()
+        return Response(status_code=502)
+    if r.status_code != 200:
+        await r.aclose(); await client.aclose()
+        return Response(status_code=r.status_code)
+    ctype = r.headers.get("content-type", "")
+    if path.endswith(".m3u8") or "mpegurl" in ctype:
+        body = (await r.aread()).decode()
+        await r.aclose(); await client.aclose()
+        # relative URIs resolve under /api/tv/hls/… already; re-root absolute ones
+        out = []
+        for line in body.splitlines():
+            if line.startswith("/"):
+                line = "/api/tv/hls" + line
+            elif 'URI="/' in line:
+                line = line.replace('URI="/', 'URI="/api/tv/hls/')
+            out.append(line)
+        return Response("\n".join(out) + "\n", media_type="application/vnd.apple.mpegurl",
+                        headers={"Cache-Control": "no-store"})
+
+    async def gen():
+        try:
+            async for chunk in r.aiter_bytes(65536):
+                yield chunk
+        finally:
+            await r.aclose(); await client.aclose()
+    return StreamingResponse(gen(), media_type=ctype or "video/mp2t")
+
+
+@router.post("/stream/stop")
+async def stream_stop(device_id: str = "", play_session_id: str = ""):
+    """Free the tuner/transcode when the popup closes (4 OTA tuners — be nice)."""
+    base, key, _ = _jf()
+    if not base or not key or not device_id:
+        return {"ok": False}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.delete(f"{base}/Videos/ActiveEncodings",
+                                params={"api_key": key, "DeviceId": device_id,
+                                        "PlaySessionId": play_session_id})
+    except Exception:
+        pass
+    return {"ok": True}
 
 
 @router.get("/logo/{channel_id}")
