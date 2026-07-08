@@ -1,0 +1,12 @@
+{
+  "id": "blink",
+  "name": "Blink",
+  "icon": "📹",
+  "description": "Blink cameras — live view, motion-triggered clips, manual capture",
+  "version": "0.1.0",
+  "color": "#facc15",
+  "nav_path": "/blink",
+  "core": false,
+  "api_routers": ["api.routers.blink"],
+  "requires": []
+}

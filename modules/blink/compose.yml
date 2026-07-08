@@ -1,0 +1,19 @@
+# blink module's own backing service — the blinkvault capture engine.
+# Runs iff the module is physically in modules/ (thrive-compose.sh merges this).
+# Reached ONLY through the thrive API's /blink proxy (never exposed directly);
+# creds.json / capture_config.json / clips live under trunk's data/blink.
+name: thrive
+services:
+  blink:
+    build: ../modules/blink/sidecar
+    container_name: thrive_blink
+    restart: unless-stopped
+    volumes:
+      # relative to the project dir (trunk/), like vault's data dir
+      - ./data/blink:/data
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge

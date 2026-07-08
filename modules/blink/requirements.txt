@@ -1,0 +1,3 @@
+# Blink module — the router proxies to the blinkvault sidecar over the internal
+# network; blinkpy/ffmpeg/numpy live in the SIDECAR image, not the API image.
+httpx
