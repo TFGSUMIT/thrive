@@ -162,7 +162,12 @@ async def authenticate(blink: Blink) -> None:
     if not creds:
         raise RuntimeError("Not logged in — add Blink credentials in the module first")
     blink.auth = Auth(creds, no_prompt=True)
-    await blink.start()
+    # Blink.start() returns False on auth failure instead of raising — check it,
+    # and confirm a real token landed (the original blinkvault never did, which
+    # made failed logins look like empty accounts).
+    ok = await blink.start()
+    if ok is False or not getattr(blink.auth, "token", None):
+        raise RuntimeError("Blink login failed (see blinkpy log for status/body)")
     save_creds(blink.auth)   # persist refreshed tokens
 
 
@@ -253,7 +258,14 @@ class Daemon:
         self.cameras = list(all_cams)
         cam_name, camera = find_camera(self._blink, cfg.get("camera_name", ""))
         if camera is None:
-            self._emit("No camera found. Check camera_name in config.")
+            # dump identity + the raw homescreen so "account empty" vs "wrong
+            # account/region" vs "unparsed device type" is diagnosable from the
+            # activity log without extra logins
+            a = self._blink.auth
+            self._emit(f"auth: account_id={getattr(a,'account_id',None)} "
+                       f"region={getattr(a,'region_id',None)} host={getattr(a,'host',None)}")
+            hs = getattr(self._blink, "homescreen", None)
+            self._emit(f"No camera found. Raw homescreen: {repr(hs)[:600]}")
             self.running = False
             return
 
@@ -462,7 +474,9 @@ _pending: dict = {"blink": None}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logging.getLogger("aiohttp.client").setLevel(logging.CRITICAL)
-    logging.getLogger("blinkpy").setLevel(logging.CRITICAL)
+    # ERROR (not CRITICAL): blinkpy's "OAuth signin failed: status=… body=…"
+    # error line is the only way to see WHY a login failed
+    logging.getLogger("blinkpy").setLevel(logging.ERROR)
     yield
     await daemon.stop()
 
@@ -495,13 +509,17 @@ async def auth_login(request: Request):
     blink = Blink(motion_interval=0, refresh_rate=30)
     blink.auth = Auth({"username": username, "password": password}, no_prompt=True)
     try:
-        await blink.start()
+        ok = await blink.start()
     except BlinkTwoFARequiredError:
         _pending["blink"] = blink
         return {"ok": True, "pending_2fa": True}
     except LoginError as e:
         await _close_blink(blink)
         raise HTTPException(status_code=401, detail=f"Login failed: {e}")
+    # start() returns False on failure rather than raising — treat as failure
+    if ok is False or not getattr(blink.auth, "token", None):
+        await _close_blink(blink)
+        raise HTTPException(status_code=401, detail="Blink login failed (check the sidecar log)")
     save_creds(blink.auth)
     await _close_blink(blink)
     return {"ok": True, "authed": True}
