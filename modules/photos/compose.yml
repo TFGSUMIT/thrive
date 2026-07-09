@@ -1,0 +1,11 @@
+# photos module — no sidecar container; this fragment MERGES onto the core api
+# service (compose fragments extend same-named services) to bind the photo
+# archive into the API container. The archive lives wherever the host keeps it
+# (nerfCore: the 4TB at /mnt/photos, holding dedupped/ + dups/ + manifests/ from
+# the dedup run). Hosts without it get an empty bind; the router feature-detects
+# and the UI shows "archive not mounted".
+name: thrive
+services:
+  api:
+    volumes:
+      - ${PHOTOS_ROOT:-/mnt/photos}:/photos
