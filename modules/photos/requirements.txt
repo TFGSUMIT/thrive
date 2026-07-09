@@ -1,0 +1,3 @@
+# photos module backend deps (installed into the API image at build time)
+Pillow>=10.0       # thumbnails for the review grid
+pillow-heif>=0.16  # HEIC/HEIF decode (iPhone photos)

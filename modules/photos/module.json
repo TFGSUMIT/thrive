@@ -1,0 +1,11 @@
+{
+  "id": "photos",
+  "name": "Photos",
+  "icon": "📷",
+  "description": "Review the photo dedup — kept vs moved, restore or trash",
+  "version": "0.1.0",
+  "color": "#a855f7",
+  "nav_path": "/photos",
+  "api_routers": ["api.routers.photos"],
+  "requires": []
+}
