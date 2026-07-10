@@ -191,7 +191,8 @@ export default function PhotosPage() {
   )
 
   const counts = (id) => {
-    if (!summary || id === 'library') return ''
+    if (!summary) return ''
+    if (id === 'library') return summary.library != null ? ` ${summary.library.toLocaleString()}` : ''
     if (id === 'errors') return summary.errors ? ` ${summary.errors}` : ''
     const t = id === 'similar' ? summary.similar : summary.tiers?.[id]
     if (!t) return ''
