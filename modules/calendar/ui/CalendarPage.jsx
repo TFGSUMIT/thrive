@@ -317,7 +317,7 @@ export default function CalendarPage() {
   // feature-detect the list modules → show them as a calendar-side panel
   const hasTodo = navModules.some(m => m.id === 'todo')
   const hasGroceries = navModules.some(m => m.id === 'groceries')
-  const showPanel = (hasTodo || hasGroceries) && showSide
+  const showPanel = showSide   // calendars section always warrants the panel
 
   // ── view-aware header (label + color), nav arrows, paged day-sets ──
   const wkDays = weekDays(cursor, weekStart)
@@ -363,8 +363,8 @@ export default function CalendarPage() {
               <>
                 <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 150 }} />
                 <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 151, minWidth: 220, background: 'var(--bg-secondary,#181818)', border: '1px solid var(--border-color,#2a2a2a)', borderRadius: 8, overflow: 'hidden', boxShadow: '0 8px 28px var(--shadow-color,rgba(0,0,0,0.45))' }}>
-                  {/* side panel position / collapse — only when a list module is active */}
-                  {(hasTodo || hasGroceries) && (
+                  {/* side panel position / collapse */}
+                  {(
                     <>
                       <div style={{ padding: '8px 16px 4px', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-tertiary,#666)' }}>Side panel</div>
                       <div style={{ display: 'flex', gap: 6, padding: '4px 16px 10px' }}>
@@ -409,7 +409,8 @@ export default function CalendarPage() {
 
       {/* ── calendar grid + the side lists (todo / groceries, feature-detected) ── */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        {showPanel && side === 'left' && <SideLists hasTodo={hasTodo} hasGroceries={hasGroceries} side="left" onCollapse={() => setShowSide(false)} />}
+        {showPanel && side === 'left' && <SideLists hasTodo={hasTodo} hasGroceries={hasGroceries} side="left" onCollapse={() => setShowSide(false)}
+          cals={cals} onToggleCal={toggleCal} onCalsChanged={() => { loadCals(); loadEvents() }} />}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
 
       {/* ── day-of-week strip (Scroll + Month share the 7-col grid) ── */}
@@ -519,7 +520,8 @@ export default function CalendarPage() {
             </button>
           )}
         </div>
-        {showPanel && side === 'right' && <SideLists hasTodo={hasTodo} hasGroceries={hasGroceries} side="right" onCollapse={() => setShowSide(false)} />}
+        {showPanel && side === 'right' && <SideLists hasTodo={hasTodo} hasGroceries={hasGroceries} side="right" onCollapse={() => setShowSide(false)}
+          cals={cals} onToggleCal={toggleCal} onCalsChanged={() => { loadCals(); loadEvents() }} />}
       </div>
 
       {/* ── event modal ── */}
