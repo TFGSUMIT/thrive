@@ -1,0 +1,6 @@
+{
+  "name": "Calendar",
+  "description": "Calendar module",
+  "version": "1.0.0",
+  "dependencies": ["core"]
+}
