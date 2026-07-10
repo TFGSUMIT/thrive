@@ -196,12 +196,34 @@ def browse(path: str = "", offset: int = 0, limit: int = 60):
             "total_media": len(media), "offset": offset, "other_files": other}
 
 
+# library media count — a 52k-file tree walk, so cached; restore/trash verdicts
+# shift it by at most a handful, well within a 10-minute staleness window
+_lib_count = {"ts": 0.0, "n": None}
+_LIB_COUNT_TTL = 600
+
+
+def _library_media_count() -> Optional[int]:
+    import time
+    now = time.monotonic()
+    if _lib_count["n"] is not None and now - _lib_count["ts"] < _LIB_COUNT_TTL:
+        return _lib_count["n"]
+    n = 0
+    for _dirpath, _dirs, names in os.walk(LIB):
+        for name in names:
+            ext = os.path.splitext(name)[1].lower()
+            if ext in IMAGE_EXT or ext in VIDEO_EXT:
+                n += 1
+    _lib_count.update(ts=now, n=n)
+    return n
+
+
 @router.get("/summary")
 def summary():
     mounted = LIB.is_dir() and MANIFESTS.is_dir()
-    out = {"mounted": mounted, "tiers": {}, "similar": None, "errors": 0}
+    out = {"mounted": mounted, "tiers": {}, "similar": None, "errors": 0, "library": None}
     if not mounted:
         return out
+    out["library"] = _library_media_count()
     reviewed = _reviewed()
     for tier in TIERS:
         entries = _load_manifest(tier)
