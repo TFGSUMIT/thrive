@@ -477,7 +477,9 @@ async def lifespan(app: FastAPI):
     # ERROR (not CRITICAL): blinkpy's "OAuth signin failed: status=… body=…"
     # error line is the only way to see WHY a login failed
     logging.getLogger("blinkpy").setLevel(logging.ERROR)
+    watcher = asyncio.create_task(_event_watcher())
     yield
+    watcher.cancel()
     await daemon.stop()
 
 app = FastAPI(lifespan=lifespan)
@@ -698,12 +700,19 @@ async def cameras_list():
             "wifi_strength":  a.get("wifi_strength"),
             "motion_enabled": a.get("motion_enabled"),
             "type":           getattr(cam, "camera_type", None),
+            "event_ts":       _event_state["event_ts"].get(name),
+            "event_active":   _event_wins(name),
         })
     return {"cameras": out}
 
 
 @app.get("/cameras/{name}/thumb.jpg")
 async def camera_thumb(name: str):
+    # a newer motion/doorbell event frame beats the cloud thumbnail
+    if _event_wins(name):
+        return Response(content=_event_frame(name).read_bytes(),
+                        media_type="image/jpeg",
+                        headers={"Cache-Control": "private, max-age=30"})
     blink = await _fresh_browse_blink()
     cam = _cameras_of(blink).get(name)
     if cam is None:
@@ -724,7 +733,73 @@ async def camera_snap(name: str):
         raise HTTPException(status_code=404, detail="No such camera")
     await cam.snap_picture()          # ask the camera for a new thumbnail
     _browser["refreshed"] = 0.0       # force homescreen re-pull on next fetch
+    _event_state["cloud_ts"][name] = time.time()   # fresh cloud thumb wins the card
     return {"ok": True}
+
+
+# ── event-driven thumbnails ───────────────────────────────────────────────────
+# Blink's own motion detection (and doorbell presses) already record a clip to
+# the cloud; this watcher polls the homescreen (cloud only — never wakes a
+# camera) and, when a camera has a NEW clip, extracts its first frame as the
+# camera's card image. The locally-monitored camera (capture_config
+# camera_name) is skipped — it only does anything when actively watched.
+EVENT_THUMBS = BASE_DIR / "event_thumbs"
+EVENT_POLL_SECONDS = 60
+_event_state: dict = {"clips": {}, "event_ts": {}, "cloud_ts": {}}
+
+
+def _event_frame(name: str) -> Path:
+    return EVENT_THUMBS / f"{name}.jpg"
+
+
+def _event_wins(name: str) -> bool:
+    """The event frame is the card image iff it's newer than the cloud thumb."""
+    ts = _event_state["event_ts"].get(name)
+    return bool(ts and ts > _event_state["cloud_ts"].get(name, 0)
+                and _event_frame(name).exists())
+
+
+async def _extract_event_frame(cam, name: str) -> None:
+    resp = await cam.get_video_clip()
+    if not resp or resp.status != 200:
+        return
+    data = await resp.read()
+    EVENT_THUMBS.mkdir(exist_ok=True)
+    tmp = EVENT_THUMBS / f".{name}.mp4"
+    tmp.write_bytes(data)
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-loglevel", "error", "-y", "-i", str(tmp),
+        "-frames:v", "1", "-q:v", "4", str(_event_frame(name)))
+    await proc.wait()
+    tmp.unlink(missing_ok=True)
+    if proc.returncode == 0:
+        _event_state["event_ts"][name] = time.time()
+        log.info("event frame updated: %s", name)
+
+
+async def _event_watcher() -> None:
+    while True:
+        try:
+            await asyncio.sleep(EVENT_POLL_SECONDS)
+            if not CREDS_FILE.exists():
+                continue
+            blink = await _browse_blink()
+            await blink.refresh(force=True)
+            _browser["refreshed"] = time.monotonic()
+            skip = (load_config().get("camera_name") or "").strip()
+            for name, cam in _cameras_of(blink).items():
+                if name == skip:
+                    continue
+                clip = getattr(cam, "clip", None)
+                had_baseline = name in _event_state["clips"]
+                if clip and clip != _event_state["clips"].get(name):
+                    _event_state["clips"][name] = clip
+                    if had_baseline:      # first poll just sets the baseline
+                        await _extract_event_frame(cam, name)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.warning("event watcher: %s", e)
 
 
 if __name__ == "__main__":
