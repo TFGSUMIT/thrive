@@ -110,6 +110,57 @@ function ClipRow({ c, onDel }) {
   )
 }
 
+// app-style home screen: every camera with its latest cloud thumbnail
+function CameraGrid() {
+  const [cams, setCams] = useState(null)
+  const [err, setErr] = useState('')
+  const [thumbKey, setThumbKey] = useState({})   // name → cache-bust counter
+  const [snapping, setSnapping] = useState({})
+
+  const load = () => api.get('/blink/cameras')
+    .then(d => { setCams(d.cameras || []); setErr(d.error || '') })
+    .catch(e => setErr(e.message))
+  useEffect(() => { load() }, [])
+
+  const snap = async (name) => {
+    setSnapping(s => ({ ...s, [name]: true }))
+    try {
+      await api.post(`/blink/cameras/${encodeURIComponent(name)}/snap`)
+      await new Promise(r => setTimeout(r, 6000))   // camera wakes + uploads
+      setThumbKey(k => ({ ...k, [name]: (k[name] || 0) + 1 }))
+      load()
+    } catch (e) { setErr(e.message) }
+    setSnapping(s => ({ ...s, [name]: false }))
+  }
+
+  if (err) return <div style={{ ...card, marginBottom: 20, color: 'var(--text-tertiary,#888)', fontSize: 13 }}>Cameras unavailable: {err}</div>
+  if (!cams) return <div style={{ ...card, marginBottom: 20, color: 'var(--text-tertiary,#666)', fontSize: 13, fontFamily: 'monospace' }}>loading cameras…</div>
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14, marginBottom: 20 }}>
+      {cams.map(c => (
+        <div key={c.name} style={{ ...card, padding: 10 }}>
+          <img src={`/api/blink/cameras/${encodeURIComponent(c.name)}/thumb.jpg?t=${thumbKey[c.name] || 0}`}
+            alt={c.name} loading="lazy"
+            onError={e => { e.currentTarget.style.opacity = 0.25 }}
+            style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', borderRadius: 8,
+                     background: '#000', display: 'block', opacity: snapping[c.name] ? 0.4 : 1 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+            <span style={{ fontSize: 13, fontFamily: 'var(--font-mono,monospace)', fontWeight: 700 }}>{c.name}</span>
+            <div style={{ flex: 1 }} />
+            <span title="battery" style={{ fontSize: 12 }}>{c.battery === 'ok' ? '🔋' : c.battery ? '🪫' : ''}</span>
+            {c.temperature != null && <span style={{ fontSize: 11, color: 'var(--text-tertiary,#888)', fontFamily: 'monospace' }}>{c.temperature}°</span>}
+            <button style={{ ...btn, padding: '3px 8px', fontSize: 11 }} disabled={snapping[c.name]}
+              title="take a fresh snapshot" onClick={() => snap(c.name)}>
+              {snapping[c.name] ? '…' : '↻'}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function BlinkPage() {
   const [s, setS] = useState(null)          // /blink/status payload
   const [offline, setOffline] = useState(false)
@@ -170,6 +221,8 @@ export default function BlinkPage() {
               <button style={{ ...btn, color: REC, borderColor: REC }} onClick={() => act('stop')}>■ Stop</button>
             </>}
       </div>
+
+      <CameraGrid />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 20 }}>
         <div style={card}>

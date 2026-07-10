@@ -88,6 +88,33 @@ async def auth_logout(request: Request):
     return await _passthrough("POST", "/auth/logout")
 
 
+@router.get("/cameras")
+async def cameras(request: Request):
+    _auth(request)
+    # first call may spin up a fresh Blink session in the sidecar — allow time
+    return await _passthrough("GET", "/cameras", timeout=60.0)
+
+
+@router.get("/cameras/{name}/thumb.jpg")
+async def camera_thumb(name: str, request: Request):
+    _auth(request)
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.get(f"{SIDECAR}/cameras/{name}/thumb.jpg")
+        if r.status_code != 200:
+            return Response(status_code=r.status_code)
+        return Response(content=r.content, media_type="image/jpeg",
+                        headers={"Cache-Control": "private, max-age=30"})
+    except httpx.HTTPError:
+        return Response(status_code=503)
+
+
+@router.post("/cameras/{name}/snap")
+async def camera_snap(name: str, request: Request):
+    _auth(request)
+    return await _passthrough("POST", f"/cameras/{name}/snap", timeout=60.0)
+
+
 @router.get("/snapshot.jpg")
 async def snapshot(request: Request):
     _auth(request)

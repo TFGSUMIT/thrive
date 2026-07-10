@@ -546,6 +546,9 @@ async def auth_2fa(request: Request):
 async def auth_logout():
     if daemon.running:
         await daemon.stop()
+    if _browser["blink"] is not None:
+        await _close_blink(_browser["blink"])
+        _browser["blink"] = None
     CREDS_FILE.unlink(missing_ok=True)
     return {"ok": True}
 
@@ -640,6 +643,88 @@ async def snapshot():
         raise HTTPException(status_code=503, detail="No snapshot available yet")
     return Response(content=daemon._latest_jpeg, media_type="image/jpeg",
                     headers={"Cache-Control": "no-store"})
+
+
+# ── all-cameras browser (app-style home screen) ───────────────────────────────
+# Latest cloud thumbnails for every camera on the account — not live video.
+# Reuses the daemon's authed Blink when it's running; otherwise keeps one lazy
+# standalone instance (Blink allows concurrent sessions, same as the phone app).
+_browser: dict = {"blink": None, "refreshed": 0.0}
+
+
+async def _browse_blink() -> Blink:
+    if daemon.running and daemon._blink is not None:
+        return daemon._blink
+    if _browser["blink"] is not None:
+        return _browser["blink"]
+    blink = Blink(motion_interval=0, refresh_rate=30)
+    await authenticate(blink)   # RuntimeError when not logged in / creds rejected
+    _browser["blink"] = blink
+    return blink
+
+
+def _cameras_of(blink: Blink) -> dict:
+    cams = {}
+    for sync in blink.sync.values():
+        cams.update(sync.cameras)
+    return cams
+
+
+async def _fresh_browse_blink() -> Blink:
+    try:
+        blink = await _browse_blink()
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    if time.monotonic() - _browser["refreshed"] > 30:
+        try:
+            await blink.refresh(force=True)
+            _browser["refreshed"] = time.monotonic()
+        except Exception as e:
+            log.warning("homescreen refresh failed: %s", e)
+    return blink
+
+
+@app.get("/cameras")
+async def cameras_list():
+    blink = await _fresh_browse_blink()
+    out = []
+    for name, cam in _cameras_of(blink).items():
+        a = cam.attributes
+        out.append({
+            "name":           name,
+            "serial":         a.get("serial"),
+            "battery":        a.get("battery"),
+            "temperature":    a.get("temperature"),
+            "wifi_strength":  a.get("wifi_strength"),
+            "motion_enabled": a.get("motion_enabled"),
+            "type":           getattr(cam, "camera_type", None),
+        })
+    return {"cameras": out}
+
+
+@app.get("/cameras/{name}/thumb.jpg")
+async def camera_thumb(name: str):
+    blink = await _fresh_browse_blink()
+    cam = _cameras_of(blink).get(name)
+    if cam is None:
+        raise HTTPException(status_code=404, detail="No such camera")
+    resp = await cam.get_media()
+    if not resp or resp.status != 200:
+        raise HTTPException(status_code=502, detail="Thumbnail fetch failed")
+    data = await resp.read()
+    return Response(content=data, media_type="image/jpeg",
+                    headers={"Cache-Control": "private, max-age=30"})
+
+
+@app.post("/cameras/{name}/snap")
+async def camera_snap(name: str):
+    blink = await _fresh_browse_blink()
+    cam = _cameras_of(blink).get(name)
+    if cam is None:
+        raise HTTPException(status_code=404, detail="No such camera")
+    await cam.snap_picture()          # ask the camera for a new thumbnail
+    _browser["refreshed"] = 0.0       # force homescreen re-pull on next fetch
+    return {"ok": True}
 
 
 if __name__ == "__main__":
