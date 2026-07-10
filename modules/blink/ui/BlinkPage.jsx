@@ -120,7 +120,8 @@ function CameraGrid() {
   const load = () => api.get('/blink/cameras')
     .then(d => { setCams(d.cameras || []); setErr(d.error || '') })
     .catch(e => setErr(e.message))
-  useEffect(() => { load() }, [])
+  // motion/doorbell events refresh cards server-side — re-pull every minute
+  useEffect(() => { load(); const t = setInterval(load, 60000); return () => clearInterval(t) }, [])
 
   const snap = async (name) => {
     setSnapping(s => ({ ...s, [name]: true }))
@@ -140,11 +141,19 @@ function CameraGrid() {
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14, marginBottom: 20 }}>
       {cams.map(c => (
         <div key={c.name} style={{ ...card, padding: 10 }}>
-          <img src={`/api/blink/cameras/${encodeURIComponent(c.name)}/thumb.jpg?t=${thumbKey[c.name] || 0}`}
-            alt={c.name} loading="lazy"
-            onError={e => { e.currentTarget.style.opacity = 0.25 }}
-            style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', borderRadius: 8,
-                     background: '#000', display: 'block', opacity: snapping[c.name] ? 0.4 : 1 }} />
+          <div style={{ position: 'relative' }}>
+            <img src={`/api/blink/cameras/${encodeURIComponent(c.name)}/thumb.jpg?t=${thumbKey[c.name] || 0}-${c.event_ts || 0}`}
+              alt={c.name} loading="lazy"
+              onError={e => { e.currentTarget.style.opacity = 0.25 }}
+              style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', borderRadius: 8,
+                       background: '#000', display: 'block', opacity: snapping[c.name] ? 0.4 : 1 }} />
+            {c.event_active && c.event_ts && (
+              <span style={{ position: 'absolute', top: 6, left: 6, fontSize: 10, fontFamily: 'monospace',
+                             background: 'rgba(0,0,0,0.65)', color: REC, borderRadius: 4, padding: '2px 6px' }}>
+                ● motion {new Date(c.event_ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
             <span style={{ fontSize: 13, fontFamily: 'var(--font-mono,monospace)', fontWeight: 700 }}>{c.name}</span>
             <div style={{ flex: 1 }} />
