@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '@trunk/api'
 
 const TABS = [
+  { id: 'library', label: '🖼 Library' },
   { id: 'tier1', label: 'Exact dups' },
   { id: 'tier2', label: 'Metadata twins' },
   { id: 'tier3', label: 'Resizes' },
@@ -74,9 +75,78 @@ const badge = (text, color) => (
                  border: `1px solid ${color}`, borderRadius: 3, padding: '2px 8px' }}>{text}</span>
 )
 
+// ── library browser (the dedupped/ tree itself) ──────────────────────────────
+function Library({ onError }) {
+  const [path, setPath] = useState('')
+  const [data, setData] = useState(null)
+
+  const fetchDir = useCallback((p, offset) => {
+    api.get(`/photos/browse?path=${encodeURIComponent(p)}&offset=${offset}&limit=60`)
+      .then(r => setData(cur => (offset && cur && cur.path === r.path)
+        ? { ...r, files: [...cur.files, ...r.files] } : r))
+      .catch(e => onError(e.message))
+  }, [onError])
+
+  useEffect(() => { setData(null); fetchDir(path, 0) }, [path, fetchDir])
+
+  const crumbs = path ? path.split('/') : []
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ fontSize: 13, marginBottom: 12, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <a onClick={() => setPath('')} style={{ cursor: 'pointer', color: 'var(--text-secondary)' }}>Library</a>
+        {crumbs.map((c, i) => (
+          <span key={i} style={{ color: 'var(--text-tertiary)' }}>
+            {' / '}
+            <a onClick={() => setPath(crumbs.slice(0, i + 1).join('/'))}
+               style={{ cursor: 'pointer', color: i === crumbs.length - 1 ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{c}</a>
+          </span>
+        ))}
+      </div>
+
+      {!data ? <p style={{ color: 'var(--text-tertiary)' }}>loading…</p> : <>
+        {data.dirs.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+            {data.dirs.map(d => (
+              <button key={d} onClick={() => setPath(path ? `${path}/${d}` : d)}
+                style={{ ...btn(false), display: 'flex', gap: 6, alignItems: 'center' }}>
+                <span>📁</span>{d}
+              </button>
+            ))}
+          </div>
+        )}
+        {data.files.length > 0 && (
+          <div style={{ display: 'grid', gap: 10,
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+            {data.files.map(f => (
+              <div key={f.path} style={{ background: 'var(--bg-secondary)', borderRadius: 6,
+                                         border: '1px solid var(--border-color)', padding: 6 }}>
+                <Thumb path={f.path} height={130} />
+                <div title={f.name} style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 4,
+                                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {f.video ? '🎬 ' : ''}{f.name}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: '14px 0' }}>
+          {data.total_media.toLocaleString()} photos/videos
+          {data.other_files ? ` · ${data.other_files} other files (hidden)` : ''}
+          {!data.dirs.length && !data.total_media && !data.other_files && ' — empty folder'}
+        </div>
+        {data.files.length < data.total_media && (
+          <div style={{ textAlign: 'center', margin: 16 }}>
+            <button style={btn(false)} onClick={() => fetchDir(path, data.files.length)}>Load more</button>
+          </div>
+        )}
+      </>}
+    </div>
+  )
+}
+
 export default function PhotosPage() {
   const [summary, setSummary] = useState(null)
-  const [tab, setTab] = useState('tier1')
+  const [tab, setTab] = useState('library')
   const [items, setItems] = useState([])
   const [total, setTotal] = useState(0)
   const [showReviewed, setShowReviewed] = useState(false)
@@ -87,6 +157,7 @@ export default function PhotosPage() {
   useEffect(() => { refreshSummary() }, [refreshSummary])
 
   const load = useCallback((reset) => {
+    if (tab === 'library') return
     const off = reset ? 0 : items.length
     const q = `?offset=${off}&limit=24&all=${showReviewed ? 1 : 0}`
     const path = tab === 'similar' ? `/photos/similar${q}`
@@ -120,7 +191,7 @@ export default function PhotosPage() {
   )
 
   const counts = (id) => {
-    if (!summary) return ''
+    if (!summary || id === 'library') return ''
     if (id === 'errors') return summary.errors ? ` ${summary.errors}` : ''
     const t = id === 'similar' ? summary.similar : summary.tiers?.[id]
     if (!t) return ''
@@ -131,10 +202,12 @@ export default function PhotosPage() {
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1280, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap' }}>
-        <h2 style={{ margin: 0 }}>📷 Photo review</h2>
-        <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-          every verdict is a move — nothing is deleted
-        </span>
+        <h2 style={{ margin: 0 }}>📷 Photos</h2>
+        {tab !== 'library' && (
+          <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+            every verdict is a move — nothing is deleted
+          </span>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 8, margin: '18px 0 6px', flexWrap: 'wrap' }}>
@@ -145,16 +218,20 @@ export default function PhotosPage() {
             {t.label}{counts(t.id)}
           </button>
         ))}
-        <label style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-secondary)',
-                        display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-          <input type="checkbox" checked={showReviewed} onChange={e => setShowReviewed(e.target.checked)} />
-          show reviewed
-        </label>
+        {tab !== 'library' && tab !== 'errors' && (
+          <label style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-secondary)',
+                          display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+            <input type="checkbox" checked={showReviewed} onChange={e => setShowReviewed(e.target.checked)} />
+            show reviewed
+          </label>
+        )}
       </div>
 
       {error && <div style={{ color: 'var(--color-danger)', fontSize: 13, margin: '8px 0' }}>{error}</div>}
 
-      {tab === 'errors' ? (
+      {tab === 'library' ? (
+        <Library onError={setError} />
+      ) : tab === 'errors' ? (
         <div style={{ marginTop: 12 }}>
           {items.map((e, i) => (
             <div key={i} style={{ padding: '10px 14px', background: 'var(--bg-secondary)',

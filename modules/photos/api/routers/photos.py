@@ -162,6 +162,40 @@ def _unclobbered(dest: Path) -> Path:
 
 
 # ── routes ────────────────────────────────────────────────────────────────────
+IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tif", ".tiff",
+             ".webp", ".heic", ".heif"}
+VIDEO_EXT = {".mp4", ".mov", ".avi", ".mkv", ".m4v", ".3gp", ".wmv", ".webm"}
+
+
+@router.get("/browse")
+def browse(path: str = "", offset: int = 0, limit: int = 60):
+    """List one directory of the library: subfolders + media files (paged).
+    `path` is relative to dedupped/; non-media files are counted, not listed."""
+    limit = max(1, min(limit, 200))
+    d = _safe("dedupped/" + path) if path else LIB
+    if not d.is_dir():
+        raise HTTPException(status_code=404, detail="No such folder")
+    dirs, media, other = [], [], 0
+    for entry in sorted(d.iterdir(), key=lambda p: p.name.lower()):
+        if entry.name.startswith("."):
+            continue
+        if entry.is_dir():
+            dirs.append(entry.name)
+        else:
+            ext = entry.suffix.lower()
+            if ext in IMAGE_EXT or ext in VIDEO_EXT:
+                media.append(entry)
+            else:
+                other += 1
+    page = media[offset:offset + limit]
+    files = [{"name": p.name,
+              "path": str(p.relative_to(ROOT)),
+              "size": p.stat().st_size,
+              "video": p.suffix.lower() in VIDEO_EXT} for p in page]
+    return {"path": path, "dirs": dirs, "files": files,
+            "total_media": len(media), "offset": offset, "other_files": other}
+
+
 @router.get("/summary")
 def summary():
     mounted = LIB.is_dir() and MANIFESTS.is_dir()
